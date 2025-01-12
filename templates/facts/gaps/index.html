@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>GAPS Analysis</h1>
+
+<form method="POST" action="{{ url_for('gaps') }}" class="mb-4">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label for="from_date" class="form-label">From Date</label>
+            <input type="date" class="form-control" id="from_date" name="from_date" required>
+        </div>
+        <div class="col-md-3">
+            <label for="to_date" class="form-label">To Date</label>
+            <input type="date" class="form-control" id="to_date" name="to_date" required>
+        </div>
+        <div class="col-md-3">
+            <label for="interval" class="form-label">Interval</label>
+            <select class="form-select" id="interval" name="interval" required>
+                <option value="">Choose interval...</option>
+                <option value="day">Day</option>
+                <option value="minute">Minute</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary">Analyze Gaps</button>
+        </div>
+    </div>
+</form>
+
+{% if results %}
+<div class="results-section mt-4">
+    <h2>Gap Analysis Results</h2>
+    <div class="chart-container" style="position: relative; height:400px; width:100%">
+        <canvas id="gapChart"></canvas>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('gapChart').getContext('2d');
+    const data = {{ results|tojson }};
+    
+    if (data.error) {
+        alert('Error: ' + data.error);
+        return;
+    }
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Number of Instances',
+                data: data.values,
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.6)',  // Total Gaps
+                    'rgba(54, 162, 235, 0.6)',  // Gap Up
+                    'rgba(255, 99, 132, 0.6)'   // Gap Down
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Instances'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            let value = context.parsed.y;
+                            
+                            if (label) {
+                                label += ': ' + value;
+                            }
+                            
+                            // Add percentage information
+                            if (context.dataIndex === 0) {  // Total Gaps
+                                label += ` (${data.percentages.total})`;
+                            } else if (context.dataIndex === 1) {  // Gap Up
+                                label += ` (${data.percentages.up})`;
+                            } else if (context.dataIndex === 2) {  // Gap Down
+                                label += ` (${data.percentages.down})`;
+                            }
+                            
+                            return label;
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Gap Analysis Distribution'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
