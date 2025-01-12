@@ -30,15 +30,25 @@
 {% if results %}
 <div class="results-section mt-4">
     <h2>Gap Analysis Results</h2>
-    <div class="chart-container" style="position: relative; height:400px; width:100%">
-        <canvas id="gapChart"></canvas>
+    <div class="row">
+        <!-- First Column - Gap Distribution -->
+        <div class="col-md-6">
+            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                <canvas id="gapDistributionChart"></canvas>
+            </div>
+        </div>
+        <!-- Second Column - Gap Closure -->
+        <div class="col-md-6">
+            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                <canvas id="gapClosureChart"></canvas>
+            </div>
+        </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('gapChart').getContext('2d');
     const data = {{ results|tojson }};
     
     if (data.error) {
@@ -46,13 +56,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
-    new Chart(ctx, {
+    // First Chart - Gap Distribution
+    const ctx1 = document.getElementById('gapDistributionChart').getContext('2d');
+    new Chart(ctx1, {
         type: 'bar',
         data: {
-            labels: data.labels,
+            labels: data.distribution.labels,
             datasets: [{
                 label: 'Number of Instances',
-                data: data.values,
+                data: data.distribution.values,
                 backgroundColor: [
                     'rgba(75, 192, 192, 0.6)',  // Total Gaps
                     'rgba(54, 162, 235, 0.6)',  // Gap Up
@@ -89,13 +101,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 label += ': ' + value;
                             }
                             
-                            // Add percentage information
-                            if (context.dataIndex === 0) {  // Total Gaps
-                                label += ` (${data.percentages.total})`;
-                            } else if (context.dataIndex === 1) {  // Gap Up
-                                label += ` (${data.percentages.up})`;
-                            } else if (context.dataIndex === 2) {  // Gap Down
-                                label += ` (${data.percentages.down})`;
+                            if (context.dataIndex === 0) {
+                                label += ` (${data.distribution.percentages.total})`;
+                            } else if (context.dataIndex === 1) {
+                                label += ` (${data.distribution.percentages.up})`;
+                            } else if (context.dataIndex === 2) {
+                                label += ` (${data.distribution.percentages.down})`;
                             }
                             
                             return label;
@@ -105,6 +116,63 @@ document.addEventListener('DOMContentLoaded', function() {
                 title: {
                     display: true,
                     text: 'Gap Analysis Distribution'
+                }
+            }
+        }
+    });
+
+    // Second Chart - Gap Closure
+    const ctx2 = document.getElementById('gapClosureChart').getContext('2d');
+    new Chart(ctx2, {
+        type: 'bar',
+        data: {
+            labels: data.closure.labels,
+            datasets: [{
+                label: 'Percentage',
+                data: data.closure.values,
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.6)',  // Gap Up
+                    'rgba(255, 99, 132, 0.6)'   // Gap Down
+                ],
+                borderColor: [
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Percentage (%)'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const type = context.dataIndex === 0 ? 'gap_up' : 'gap_down';
+                            const details = data.closure.details[type];
+                            return [
+                                `${context.parsed.y.toFixed(2)}%`,
+                                `Total: ${details.total}`,
+                                context.dataIndex === 0 
+                                    ? `Higher Close: ${details.higher_close}`
+                                    : `Lower Close: ${details.lower_close}`
+                            ];
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Gap Closure Analysis'
                 }
             }
         }
