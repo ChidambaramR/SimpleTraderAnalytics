@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 # Dont publish db files
-database/ohlc_data/
+database/ohlc_data/*.db
 
 # Distribution / packaging
 .Python
