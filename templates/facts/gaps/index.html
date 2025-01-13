@@ -44,6 +44,29 @@
             </div>
         </div>
     </div>
+
+    <div class="row mt-4">
+        <!-- First Column - Gap Ranges Distribution -->
+        <div class="col-md-6">
+            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                <canvas id="gapRangesChart"></canvas>
+            </div>
+        </div>
+        <!-- Second Column - Successful Gap Ranges -->
+        <div class="col-md-6">
+            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                <canvas id="successfulGapRangesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                <canvas id="gapSuccessRatesChart"></canvas>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -173,6 +196,192 @@ document.addEventListener('DOMContentLoaded', function() {
                 title: {
                     display: true,
                     text: 'Gap Closure Analysis'
+                }
+            }
+        }
+    });
+
+    // Third Chart - Gap Ranges Distribution
+    const ctx3 = document.getElementById('gapRangesChart').getContext('2d');
+    new Chart(ctx3, {
+        type: 'bar',
+        data: {
+            labels: data.ranges.labels,
+            datasets: [{
+                label: 'Gap Up %',
+                data: data.ranges.values.up,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            },
+            {
+                label: 'Gap Down %',
+                data: data.ranges.values.down,
+                backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Percentage of Total Gaps (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Gap Percentage Range'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const type = context.dataset.label.includes('Up') ? 'up' : 'down';
+                            const rangeKey = data.ranges.labels[context.dataIndex];
+                            const count = data.ranges.details[type][rangeKey];
+                            const total = data.ranges.details[`total_${type}`];
+                            return [
+                                `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`,
+                                `Count: ${count} of ${total} total ${type} gaps`
+                            ];
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Gap Distribution by Percentage Range'
+                }
+            }
+        }
+    });
+
+    // Fourth Chart - Successful Gap Ranges Distribution
+    const ctx4 = document.getElementById('successfulGapRangesChart').getContext('2d');
+    new Chart(ctx4, {
+        type: 'bar',
+        data: {
+            labels: data.successful_ranges.labels,
+            datasets: [{
+                label: 'Successful Gap Up %',
+                data: data.successful_ranges.values.up,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            },
+            {
+                label: 'Successful Gap Down %',
+                data: data.successful_ranges.values.down,
+                backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Percentage of Successful Gaps (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Gap Percentage Range'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const type = context.dataset.label.includes('Up') ? 'up' : 'down';
+                            const rangeKey = data.successful_ranges.labels[context.dataIndex];
+                            const count = data.successful_ranges.details[type][rangeKey];
+                            const total = data.successful_ranges.details[`total_${type}`];
+                            return [
+                                `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`,
+                                `Count: ${count} of ${total} total successful ${type} gaps`
+                            ];
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Successful Gap Distribution by Percentage Range'
+                }
+            }
+        }
+    });
+
+    // Fifth Chart - Gap Success Rates by Range
+    const ctx5 = document.getElementById('gapSuccessRatesChart').getContext('2d');
+    new Chart(ctx5, {
+        type: 'bar',
+        data: {
+            labels: data.success_rates.labels,
+            datasets: [{
+                label: 'Gap Up Success Rate',
+                data: data.success_rates.values.up,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            },
+            {
+                label: 'Gap Down Success Rate',
+                data: data.success_rates.values.down,
+                backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Success Rate (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Gap Percentage Range'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const type = context.dataset.label.includes('Up') ? 'up' : 'down';
+                            const rangeKey = data.success_rates.labels[context.dataIndex];
+                            const stats = data.success_rates.details[type][rangeKey];
+                            return [
+                                `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`,
+                                `Successful: ${stats.successful} of ${stats.total} gaps`
+                            ];
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Success Rate by Gap Range'
                 }
             }
         }

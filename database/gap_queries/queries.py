@@ -171,4 +171,279 @@ def analyze_gap_closures(from_date, to_date, interval):
         }
         
     except Exception as e:
-        return {'error': f"Error analyzing gap closures: {str(e)}"} 
+        return {'error': f"Error analyzing gap closures: {str(e)}"}
+
+def analyze_gap_ranges(from_date, to_date, interval):
+    """
+    Analyzes gap distribution across different percentage ranges.
+    Returns data for gap ups and gap downs in each range.
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
+        
+        conn = sqlite3.connect(db_path)
+        
+        table_query = """
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """
+        tables = pd.read_sql_query(table_query, conn)
+        
+        from_date = f"{from_date} 00:00:00"
+        to_date = f"{to_date} 23:59:59"
+        
+        # Initialize counters for each range
+        ranges = [(2,3), (3,4), (4,5), (5,6), (6,7), (7,float('inf'))]
+        gap_counts = {
+            'up': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": 0 for r in ranges},
+            'down': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": 0 for r in ranges}
+        }
+        
+        total_gaps_up = 0
+        total_gaps_down = 0
+
+        for table in tables['name']:
+            query = f"""
+            SELECT ts, open, close 
+            FROM "{table}"
+            WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+            ORDER BY ts
+            """
+            
+            df = pd.read_sql_query(query, conn, params=(from_date, to_date))
+            
+            if len(df) > 0:
+                df['prev_close'] = df['close'].shift(1)
+                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+                
+                # Count gaps in each range
+                for low, high in ranges:
+                    range_key = f"{low}-{high if high != float('inf') else 'above'}"
+                    
+                    # Gap ups
+                    mask_up = (df['gap_percent'] >= low) & (df['gap_percent'] < high if high != float('inf') else True)
+                    gap_counts['up'][range_key] += len(df[mask_up])
+                    total_gaps_up += len(df[mask_up])
+                    
+                    # Gap downs
+                    mask_down = (df['gap_percent'] <= -low) & (df['gap_percent'] > (-high if high != float('inf') else -float('inf')))
+                    gap_counts['down'][range_key] += len(df[mask_down])
+                    total_gaps_down += len(df[mask_down])
+        
+        conn.close()
+        
+        # Calculate percentages
+        percentages = {
+            'up': {},
+            'down': {}
+        }
+        
+        for range_key in gap_counts['up'].keys():
+            percentages['up'][range_key] = (gap_counts['up'][range_key] / total_gaps_up * 100) if total_gaps_up > 0 else 0
+            percentages['down'][range_key] = (gap_counts['down'][range_key] / total_gaps_down * 100) if total_gaps_down > 0 else 0
+        
+        return {
+            'labels': list(gap_counts['up'].keys()),
+            'values': {
+                'up': list(percentages['up'].values()),
+                'down': list(percentages['down'].values())
+            },
+            'details': {
+                'up': gap_counts['up'],
+                'down': gap_counts['down'],
+                'total_up': total_gaps_up,
+                'total_down': total_gaps_down
+            }
+        }
+        
+    except Exception as e:
+        return {'error': f"Error analyzing gap ranges: {str(e)}"}
+
+def analyze_successful_gap_ranges(from_date, to_date, interval):
+    """
+    Analyzes distribution of successful gaps across different percentage ranges.
+    Successful gaps are:
+    - Gap Up + Higher Close
+    - Gap Down + Lower Close
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
+        
+        conn = sqlite3.connect(db_path)
+        
+        table_query = """
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """
+        tables = pd.read_sql_query(table_query, conn)
+        
+        from_date = f"{from_date} 00:00:00"
+        to_date = f"{to_date} 23:59:59"
+        
+        # Initialize counters for each range
+        ranges = [(2,3), (3,4), (4,5), (5,6), (6,7), (7,float('inf'))]
+        successful_gaps = {
+            'up': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": 0 for r in ranges},
+            'down': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": 0 for r in ranges}
+        }
+        
+        total_successful_up = 0
+        total_successful_down = 0
+
+        for table in tables['name']:
+            query = f"""
+            SELECT ts, open, close 
+            FROM "{table}"
+            WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+            ORDER BY ts
+            """
+            
+            df = pd.read_sql_query(query, conn, params=(from_date, to_date))
+            
+            if len(df) > 0:
+                df['prev_close'] = df['close'].shift(1)
+                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+                
+                # Count successful gaps in each range
+                for low, high in ranges:
+                    range_key = f"{low}-{high if high != float('inf') else 'above'}"
+                    
+                    # Successful gap ups (higher close)
+                    mask_up = ((df['gap_percent'] >= low) & 
+                             (df['gap_percent'] < high if high != float('inf') else True) &
+                             (df['close'] > df['open']))
+                    successful_gaps['up'][range_key] += len(df[mask_up])
+                    total_successful_up += len(df[mask_up])
+                    
+                    # Successful gap downs (lower close)
+                    mask_down = ((df['gap_percent'] <= -low) & 
+                               (df['gap_percent'] > (-high if high != float('inf') else -float('inf'))) &
+                               (df['close'] < df['open']))
+                    successful_gaps['down'][range_key] += len(df[mask_down])
+                    total_successful_down += len(df[mask_down])
+        
+        conn.close()
+        
+        # Calculate percentages
+        percentages = {
+            'up': {},
+            'down': {}
+        }
+        
+        for range_key in successful_gaps['up'].keys():
+            percentages['up'][range_key] = (successful_gaps['up'][range_key] / total_successful_up * 100) if total_successful_up > 0 else 0
+            percentages['down'][range_key] = (successful_gaps['down'][range_key] / total_successful_down * 100) if total_successful_down > 0 else 0
+        
+        return {
+            'labels': list(successful_gaps['up'].keys()),
+            'values': {
+                'up': list(percentages['up'].values()),
+                'down': list(percentages['down'].values())
+            },
+            'details': {
+                'up': successful_gaps['up'],
+                'down': successful_gaps['down'],
+                'total_up': total_successful_up,
+                'total_down': total_successful_down
+            }
+        }
+        
+    except Exception as e:
+        return {'error': f"Error analyzing successful gap ranges: {str(e)}"}
+
+def analyze_gap_range_success_rates(from_date, to_date, interval):
+    """
+    Analyzes success rate within each gap range.
+    Shows what percentage of gaps were successful in each range.
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
+        
+        conn = sqlite3.connect(db_path)
+        
+        table_query = """
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """
+        tables = pd.read_sql_query(table_query, conn)
+        
+        from_date = f"{from_date} 00:00:00"
+        to_date = f"{to_date} 23:59:59"
+        
+        # Initialize counters for each range
+        ranges = [(2,3), (3,4), (4,5), (5,6), (6,7), (7,float('inf'))]
+        gap_stats = {
+            'up': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": {'total': 0, 'successful': 0} for r in ranges},
+            'down': {f"{r[0]}-{r[1] if r[1] != float('inf') else 'above'}": {'total': 0, 'successful': 0} for r in ranges}
+        }
+
+        for table in tables['name']:
+            query = f"""
+            SELECT ts, open, close 
+            FROM "{table}"
+            WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+            ORDER BY ts
+            """
+            
+            df = pd.read_sql_query(query, conn, params=(from_date, to_date))
+            
+            if len(df) > 0:
+                df['prev_close'] = df['close'].shift(1)
+                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+                
+                # Analyze each range
+                for low, high in ranges:
+                    range_key = f"{low}-{high if high != float('inf') else 'above'}"
+                    
+                    # Gap ups in this range
+                    gap_ups = df[(df['gap_percent'] >= low) & 
+                               (df['gap_percent'] < high if high != float('inf') else True)]
+                    gap_stats['up'][range_key]['total'] += len(gap_ups)
+                    gap_stats['up'][range_key]['successful'] += len(gap_ups[gap_ups['close'] > gap_ups['open']])
+                    
+                    # Gap downs in this range
+                    gap_downs = df[(df['gap_percent'] <= -low) & 
+                                 (df['gap_percent'] > (-high if high != float('inf') else -float('inf')))]
+                    gap_stats['down'][range_key]['total'] += len(gap_downs)
+                    gap_stats['down'][range_key]['successful'] += len(gap_downs[gap_downs['close'] < gap_downs['open']])
+        
+        conn.close()
+        
+        # Calculate success rates for each range
+        success_rates = {
+            'up': {},
+            'down': {}
+        }
+        
+        for range_key in gap_stats['up'].keys():
+            # Gap ups success rate
+            total_up = gap_stats['up'][range_key]['total']
+            success_rates['up'][range_key] = (
+                gap_stats['up'][range_key]['successful'] / total_up * 100
+                if total_up > 0 else 0
+            )
+            
+            # Gap downs success rate
+            total_down = gap_stats['down'][range_key]['total']
+            success_rates['down'][range_key] = (
+                gap_stats['down'][range_key]['successful'] / total_down * 100
+                if total_down > 0 else 0
+            )
+        
+        return {
+            'labels': list(gap_stats['up'].keys()),
+            'values': {
+                'up': list(success_rates['up'].values()),
+                'down': list(success_rates['down'].values())
+            },
+            'details': {
+                'up': gap_stats['up'],
+                'down': gap_stats['down']
+            }
+        }
+        
+    except Exception as e:
+        return {'error': f"Error analyzing gap range success rates: {str(e)}"} 
