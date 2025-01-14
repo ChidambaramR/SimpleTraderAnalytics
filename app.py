@@ -6,7 +6,7 @@ from database.gap_queries.queries import (
     analyze_daily_successful_gap_ranges,
     analyze_daily_gap_range_success_rates
 )
-from backtest.gaps.trading_gaps_daywise.without_sl_tp import run_backtest
+from backtest.router import run_backtest
 
 app = Flask(__name__)
 
@@ -89,12 +89,24 @@ def gaps_without_sl_tp():
     force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
-        results = run_backtest(from_date, to_date, force_run=force_run)
+        results = run_backtest('gaps_without_sl_tp', from_date, to_date, force_run=force_run)
         return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp.html', 
                              results=results)
     
-    # Default view without results
     return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp.html')
+
+@app.route('/strategies/gaps/trading-gaps-daywise/without-sl-tp-fixed-position')
+def gaps_without_sl_tp_fixed_position():
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    force_run = request.args.get('force_run', 'false').lower() == 'true'
+    
+    if from_date and to_date:
+        results = run_backtest('gaps_without_sl_tp_fixed_position', from_date, to_date, force_run=force_run)
+        return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html', 
+                             results=results)
+    
+    return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
