@@ -1,26 +1,15 @@
 import logging
-import sqlite3
 import pandas as pd
 from datetime import datetime
-import os
+from ..utils.db_utils import get_db_and_tables
 
-def total_gaps(from_date, to_date, interval):
+def analyze_daily_total_gaps(from_date, to_date):
     """
-    Query gaps statistics and return as a DataFrame.
+    Query daily gaps statistics and return as a DataFrame.
     Analyzes gaps > 2% across all stocks in the database.
     """
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
-        
-        conn = sqlite3.connect(db_path)
-        
-        table_query = """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-        """
-        tables = pd.read_sql_query(table_query, conn)
-        
+        conn, tables = get_db_and_tables('day')
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
 
@@ -93,24 +82,12 @@ def total_gaps(from_date, to_date, interval):
     except Exception as e:
         return {'error': f"Error processing gaps: {str(e)}"}
 
-def analyze_gap_closures(from_date, to_date, interval):
+def analyze_daily_gap_closures(from_date, to_date):
     """
-    Analyzes how gaps close:
-    - For gap ups: % of times close price > open price
-    - For gap downs: % of times close price < open price
+    Analyzes how daily gaps close.
     """
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
-        
-        conn = sqlite3.connect(db_path)
-        
-        table_query = """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-        """
-        tables = pd.read_sql_query(table_query, conn)
-        
+        conn, tables = get_db_and_tables('day')
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
         
@@ -173,23 +150,12 @@ def analyze_gap_closures(from_date, to_date, interval):
     except Exception as e:
         return {'error': f"Error analyzing gap closures: {str(e)}"}
 
-def analyze_gap_ranges(from_date, to_date, interval):
+def analyze_daily_gap_ranges(from_date, to_date):
     """
-    Analyzes gap distribution across different percentage ranges.
-    Returns data for gap ups and gap downs in each range.
+    Analyzes daily gap distribution across different percentage ranges.
     """
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
-        
-        conn = sqlite3.connect(db_path)
-        
-        table_query = """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-        """
-        tables = pd.read_sql_query(table_query, conn)
-        
+        conn, tables = get_db_and_tables('day')
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
         
@@ -260,25 +226,12 @@ def analyze_gap_ranges(from_date, to_date, interval):
     except Exception as e:
         return {'error': f"Error analyzing gap ranges: {str(e)}"}
 
-def analyze_successful_gap_ranges(from_date, to_date, interval):
+def analyze_daily_successful_gap_ranges(from_date, to_date):
     """
-    Analyzes distribution of successful gaps across different percentage ranges.
-    Successful gaps are:
-    - Gap Up + Higher Close
-    - Gap Down + Lower Close
+    Analyzes distribution of successful daily gaps across different percentage ranges.
     """
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
-        
-        conn = sqlite3.connect(db_path)
-        
-        table_query = """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-        """
-        tables = pd.read_sql_query(table_query, conn)
-        
+        conn, tables = get_db_and_tables('day')
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
         
@@ -353,23 +306,12 @@ def analyze_successful_gap_ranges(from_date, to_date, interval):
     except Exception as e:
         return {'error': f"Error analyzing successful gap ranges: {str(e)}"}
 
-def analyze_gap_range_success_rates(from_date, to_date, interval):
+def analyze_daily_gap_range_success_rates(from_date, to_date):
     """
-    Analyzes success rate within each gap range.
-    Shows what percentage of gaps were successful in each range.
+    Analyzes success rate within each daily gap range.
     """
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(current_dir, '..', 'ohlc_data', f'{interval}.db')
-        
-        conn = sqlite3.connect(db_path)
-        
-        table_query = """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-        """
-        tables = pd.read_sql_query(table_query, conn)
-        
+        conn, tables = get_db_and_tables('day')
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
         
