@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="strategy-description">
+    <h2>Trading Gaps Without Stop Loss and Take Profit</h2>
+    <p>
+        This strategy trades overnight gaps. On a gap up, we will short the stock and on a gap down, 
+        we will take a long position. We will not monitor the value of the stock during the day and 
+        hence there will be no stop loss and no take profit. We will sell at the end of the day.
+    </p>
+    <p>
+        <strong>Rules:</strong>
+        <ul>
+            <li>Only trade stocks with absolute gap percentage ≥ 3%</li>
+            <li>Gap Up: Short at open, cover at close</li>
+            <li>Gap Down: Buy at open, sell at close</li>
+            <li>Trade 1 quantity of each stock</li>
+            <li>Results shown for both 1x and 5x leverage</li>
+        </ul>
+    </p>
+</div>
+
+<form method="GET" action="{{ url_for('gaps_without_sl_tp') }}" class="mb-4">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label for="from_date" class="form-label">From Date</label>
+            <input type="date" class="form-control" id="from_date" name="from_date" 
+                   value="{{ request.args.get('from_date', '') }}" required>
+        </div>
+        <div class="col-md-4">
+            <label for="to_date" class="form-label">To Date</label>
+            <input type="date" class="form-control" id="to_date" name="to_date" 
+                   value="{{ request.args.get('to_date', '') }}" required>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary me-2">Run Backtest</button>
+            <div class="form-check d-flex align-items-center">
+                <input class="form-check-input" type="checkbox" id="force_run" name="force_run" 
+                       value="true" {% if request.args.get('force_run') == 'true' %}checked{% endif %}>
+                <label class="form-check-label ms-2" for="force_run">
+                    Force Run
+                </label>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if results %}
+    {% if 'error' in results %}
+    <div class="alert alert-danger" role="alert">
+        {{ results.error }}
+    </div>
+    {% else %}
+    <div class="backtest-results">
+        <h3>Backtest Results</h3>
+        <table class="table table-bordered backtest-table">
+            <thead class="table-light">
+                <tr>
+                    <th>Metric</th>
+                    <th>1x Leverage</th>
+                    <th>5x Leverage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total Trades</td>
+                    <td class="text-center" colspan="2">{{ results.total_trades }}</td>
+                </tr>
+                <tr>
+                    <td>Win Ratio</td>
+                    <td class="text-center" colspan="2">{{ results.win_ratio }}%</td>
+                </tr>
+                <tr>
+                    <td>Total Money Invested</td>
+                    <td class="text-center" colspan="2">₹{{ results.total_invested|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Profit</td>
+                    <td>₹{{ results.profit_1x|indian_currency }}</td>
+                    <td>₹{{ results.profit_5x|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Return on Investment</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_1x) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_5x) }}%</td>
+                </tr>
+                <tr>
+                    <td>Max Drawdown</td>
+                    <td>₹{{ results.max_drawdown_1x|indian_currency }}</td>
+                    <td>₹{{ results.max_drawdown_5x|indian_currency }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+{% endif %}
+{% endblock %} 
