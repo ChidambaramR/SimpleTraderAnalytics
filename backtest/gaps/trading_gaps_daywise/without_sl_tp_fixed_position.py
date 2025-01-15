@@ -76,7 +76,7 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                 daily_gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
                 selected_gaps = daily_gaps[:top_n]
                 
-                available_capital = current_equity * 5
+                available_capital = initial_capital * 5
                 per_stock_amount = available_capital / len(selected_gaps)
                 
                 daily_pnl = 0
