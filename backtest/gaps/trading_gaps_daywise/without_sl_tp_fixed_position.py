@@ -18,6 +18,7 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
         
         # Initialize tracking variables
         trades = []
+        trade_logs = []  # New list to store detailed trade logs
         total_trades = 0
         wins = 0
         current_drawdown = 0
@@ -37,10 +38,10 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
         """
         trading_days = pd.read_sql_query(date_query, conn, params=(from_date, to_date))
 
-        # Process each trading day except the last one
-        for i in range(len(trading_days) - 1):
+        # Process each trading day except the first one (since we need previous day's data)
+        for i in range(1, len(trading_days)):
             current_date = trading_days.iloc[i]['trade_date']
-            next_date = trading_days.iloc[i + 1]['trade_date']
+            prev_date = trading_days.iloc[i-1]['trade_date']
             daily_gaps = []
 
             for table in tables['name']:
@@ -51,17 +52,17 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                 ORDER BY ts
                 """
                 
-                df = pd.read_sql_query(query, conn, params=(current_date, next_date))
+                df = pd.read_sql_query(query, conn, params=(prev_date, current_date))
                 
-                if len(df) >= 2:
-                    prev_close = df.iloc[0]['close']
-                    current_open = df.iloc[1]['open']
-                    current_close = df.iloc[1]['close']
+                if len(df) >= 2:  # Need at least 2 days of data
+                    prev_close = df.iloc[0]['close']  # Previous day's close
+                    current_open = df.iloc[1]['open']  # Current day's open
+                    current_close = df.iloc[1]['close']  # Current day's close
                     
                     # Calculate gap percentage
                     gap_percent = ((current_open - prev_close) / prev_close) * 100
                     
-                    if abs(gap_percent) >= 3:
+                    if abs(gap_percent) >= 3 and abs(gap_percent) <= 7:
                         daily_gaps.append({
                             'date': df.iloc[1]['ts'],
                             'symbol': table,
@@ -76,7 +77,7 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                 daily_gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
                 selected_gaps = daily_gaps[:top_n]
                 
-                available_capital = initial_capital * 5
+                available_capital = current_equity * 5
                 per_stock_amount = available_capital / len(selected_gaps)
                 
                 daily_pnl = 0
@@ -89,11 +90,7 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                     quantity = floor(per_stock_amount / trade['open'])
                     trade['quantity'] = quantity
                     
-                    print(f"\nTrading {gap['symbol']}")
-                    print(f"Per stock amount: {per_stock_amount:.2f}")
-                    print(f"Stock price: {trade['open']:.2f}")
-                    print(f"Quantity: {quantity}")
-                    print(f"Actual invested: {quantity * trade['open']:.2f}")
+                    # print(f"Trading {gap['symbol']} on {current_date}, Per stock amount: {per_stock_amount:.2f}, Stock price: {trade['open']:.2f}, Quantity: {quantity}, Actual invested: {quantity * trade['open']:.2f}")
                     
                     # Calculate P&L
                     if gap['gap_percent'] > 0:  # Gap Up - Short
@@ -107,12 +104,7 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                         trade['fees'] = fees['total']
                         trade['pnl'] = gross_pnl - fees['total']
                         
-                        print(f"Gap %: {gap['gap_percent']:.2f}%")
-                        print(f"Entry: {trade['open']:.2f} x {quantity} = {entry_value:.2f}")
-                        print(f"Exit: {trade['close']:.2f} x {quantity} = {exit_value:.2f}")
-                        print(f"Gross P&L: {gross_pnl:.2f}")
-                        print(f"Fees: {fees['total']:.2f}")
-                        print(f"Net P&L: {trade['pnl']:.2f}")
+                        # print(f"Gap Up %: {gap['gap_percent']:.2f}%, Entry: {trade['open']:.2f} x {quantity} = {entry_value:.2f}, Exit: {trade['close']:.2f} x {quantity} = {exit_value:.2f}, Gross P&L: {gross_pnl:.2f}, Fees: {fees['total']:.2f}, Net P&L: {trade['pnl']:.2f}")
                     
                     else:  # Gap Down - Long
                         trade['direction'] = 'LONG'
@@ -124,6 +116,27 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                         fees = calculate_fees(entry_value, exit_value, 'LONG')
                         trade['fees'] = fees['total']
                         trade['pnl'] = gross_pnl - fees['total']
+
+                        # print(f"Gap Down %: {gap['gap_percent']:.2f}%, Entry: {trade['open']:.2f} x {quantity} = {entry_value:.2f}, Exit: {trade['close']:.2f} x {quantity} = {exit_value:.2f}, Gross P&L: {gross_pnl:.2f}, Fees: {fees['total']:.2f}, Net P&L: {trade['pnl']:.2f}")
+
+                    # Store trade log
+                    trade_log = {
+                        'Date': current_date,
+                        'Current cash available': current_equity,
+                        'Stock': trade['symbol'],
+                        'Prev close': trade['prev_close'],
+                        'Current open': trade['open'],
+                        'Current close': trade['close'],
+                        'Gap type': trade['direction'],
+                        'Gap pct (absolute)': abs(trade['gap_percent']),
+                        'Invested amount': trade['invested_amount'],
+                        'Quantity': quantity,
+                        'Entry Value': entry_value,
+                        'Exit Value': exit_value,
+                        'Fees': fees['total'],
+                        'PNL': trade['pnl']
+                    }
+                    trade_logs.append(trade_log)
                     
                     daily_pnl += trade['pnl']
                     trades.append(trade)
@@ -132,14 +145,40 @@ def _run_backtest_with_amount(from_date, to_date, initial_capital, top_n=5):
                         wins += 1
                 
                 current_equity += daily_pnl
-                print(f"\nDaily P&L: {daily_pnl:.2f}")
-                print(f"Current Equity after trades: {current_equity:.2f}")
+                # print(f"Daily P&L: {daily_pnl:.2f}, Current Equity after trades: {current_equity:.2f}")
                 
                 peak_equity = max(peak_equity, current_equity)
                 current_drawdown = peak_equity - current_equity
                 max_drawdown = max(max_drawdown, current_drawdown)
         
         conn.close()
+        
+        # Convert trade logs to DataFrame and save to Excel
+        if trade_logs:
+            from datetime import datetime
+            
+            df_trades = pd.DataFrame(trade_logs)
+            
+            # Format numeric columns
+            numeric_columns = ['Current cash available', 'Prev close', 'Current open', 
+                             'Current close', 'Gap pct (absolute)', 'Invested amount', 
+                             'Quantity', 'Entry Value', 'Exit Value', 'Fees', 'PNL']
+            
+            for col in numeric_columns:
+                df_trades[col] = df_trades[col].round(2)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'backtest_trades_{initial_capital}_{timestamp}.xlsx'
+            
+            # Save to Excel in the backtest/data directory
+            import os
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            excel_dir = os.path.join(current_dir, '..', '..', 'data', 'trade_logs')
+            os.makedirs(excel_dir, exist_ok=True)
+            excel_path = os.path.join(excel_dir, filename)
+            
+            df_trades.to_excel(excel_path, index=False)
         
         # Ensure we have trades before calculating statistics
         if not trades:

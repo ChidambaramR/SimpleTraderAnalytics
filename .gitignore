@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+*.xlsx
+*.db
+*.DS_Store
+
 # Dont publish db files
 database/ohlc_data/*.db
 
