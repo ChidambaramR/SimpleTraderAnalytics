@@ -37,7 +37,7 @@ class FirstMinuteGapTrader(DayTrader):
     def get_available_capital(self, tradeable_stocks):
         if not tradeable_stocks:
             return {}
-        per_stock_capital = (self.current_equity * 1) / len(tradeable_stocks)  # Using 1x leverage
+        per_stock_capital = (self.current_equity * 5) / len(tradeable_stocks)  # Using 5x leverage
         return {stock: per_stock_capital for stock in tradeable_stocks}
     
     def generate_trades(self, stock, day_data, minute_data, available_capital):
