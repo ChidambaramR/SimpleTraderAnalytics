@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="strategy-description">
+    <h2>Trading First Minute of Gapped Stocks with Stop Loss and Take Profit</h2>
+    <p>
+        This strategy trades the first minute of stocks that gap up or down. On a gap up, we short the stock at open 
+        and exit at the first minute's close. On a gap down, we go long at open and exit at the first minute's close. 
+        We use stop loss and take profit to manage risk.
+    </p>
+    <p>
+        <strong>Rules:</strong>
+        <ul>
+            <li>Gap threshold: 3%</li>
+            <li>Stop Loss: 0.75% from entry</li>
+            <li>Take Profit: 2% from entry</li>
+            <li>Entry: At market open</li>
+            <li>Exit: Either at first minute close, stop loss hit, or take profit hit</li>
+            <li>Position sizing: Equal distribution of capital among all trades</li>
+            <li>Leverage: 5x</li>
+        </ul>
+    </p>
+</div>
+
+<div class="backtest-form">
+    <form method="GET" action="{{ url_for('gaps_first_minute_with_sl_tp') }}" class="mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label for="from_date" class="form-label">From Date</label>
+                <input type="date" class="form-control" id="from_date" name="from_date" 
+                       value="{{ request.args.get('from_date', '') }}" required>
+            </div>
+            <div class="col-md-3">
+                <label for="to_date" class="form-label">To Date</label>
+                <input type="date" class="form-control" id="to_date" name="to_date" 
+                       value="{{ request.args.get('to_date', '') }}" required>
+            </div>
+            <div class="col-md-3 align-self-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="force_run" name="force_run" 
+                           value="true" {% if request.args.get('force_run') == 'true' %}checked{% endif %}>
+                    <label class="form-check-label" for="force_run">Force Rerun</label>
+                </div>
+            </div>
+            <div class="col-md-3 align-self-end">
+                <button type="submit" class="btn btn-primary">Run Backtest</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% if results %}
+    {% if results.error %}
+    <div class="alert alert-danger" role="alert">
+        {{ results.error }}
+    </div>
+    {% else %}
+    <div class="results-section">
+        <h3>Backtest Results</h3>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>1L Account</th>
+                    <th>10L Account</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total Trades</td>
+                    <td>{{ results.total_trades }}</td>
+                    <td>{{ results.total_trades }}</td>
+                </tr>
+                <tr>
+                    <td>Win Ratio</td>
+                    <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
+                </tr>
+                <tr>
+                    <td>Initial Capital</td>
+                    <td>₹{{ results.initial_capital_1L|indian_currency }}</td>
+                    <td>₹{{ results.initial_capital_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Final Equity</td>
+                    <td>₹{{ results.final_equity_1L|indian_currency }}</td>
+                    <td>₹{{ results.final_equity_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Profit</td>
+                    <td>₹{{ results.profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Return on Investment</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_1L) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_10L) }}%</td>
+                </tr>
+                <tr>
+                    <td>Max Drawdown</td>
+                    <td>₹{{ results.max_drawdown_1L|indian_currency }}</td>
+                    <td>₹{{ results.max_drawdown_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Profit per Trade</td>
+                    <td>₹{{ results.avg_profit_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_profit_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Loss per Trade</td>
+                    <td>₹{{ results.avg_loss_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_loss_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Profit per Trade</td>
+                    <td>₹{{ results.percentile_90_profit_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_profit_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Loss per Trade</td>
+                    <td>₹{{ results.percentile_90_loss_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_loss_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Profit</td>
+                    <td>₹{{ results.avg_daily_profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Loss</td>
+                    <td>₹{{ results.avg_daily_loss_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_loss_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Daily Profit</td>
+                    <td>₹{{ results.percentile_90_daily_profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_daily_profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Daily Loss</td>
+                    <td>₹{{ results.percentile_90_daily_loss_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_daily_loss_10L|indian_currency }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+{% endif %}
+{% endblock %} 

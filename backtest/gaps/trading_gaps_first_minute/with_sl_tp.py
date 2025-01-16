@@ -1,15 +1,14 @@
 from math import floor
-import pandas as pd
-import numpy as np
-from database.utils.db_utils import get_db_and_tables
-from ...utils.runner import run_backtest_with_cache
-from ...utils.fee_calculator import calculate_fees
 from ...framework.day_trader import DayTrader
+from ...utils.fee_calculator import calculate_fees
+from ...utils.runner import run_backtest_with_cache
 
-class GapTraderFixedPosition(DayTrader):
-    def __init__(self, initial_capital, top_n=5):
+class FirstMinuteGapTrader(DayTrader):
+    def __init__(self, initial_capital, gap_threshold=3, stop_loss_pct=0.75, take_profit_pct=2):
         super().__init__(initial_capital)
-        self.top_n = top_n
+        self.gap_threshold = gap_threshold
+        self.stop_loss_pct = stop_loss_pct
+        self.take_profit_pct = take_profit_pct
         self.daily_gaps = []
     
     def reset_state_for_next_day(self):
@@ -24,14 +23,13 @@ class GapTraderFixedPosition(DayTrader):
         
         gap_percent = ((current_open - prev_close) / prev_close) * 100
         
-        if abs(gap_percent) >= 3 and abs(gap_percent) <= 7:
+        if abs(gap_percent) >= self.gap_threshold:
             self.daily_gaps.append({
                 'symbol': stock_name,
                 'gap_percent': gap_percent,
                 'abs_gap_percent': abs(gap_percent),
                 'prev_close': prev_close,
-                'open': current_open,
-                'close': day_data.iloc[1]['close']
+                'open': current_open
             })
             return True
         return False
@@ -39,50 +37,81 @@ class GapTraderFixedPosition(DayTrader):
     def get_available_capital(self, tradeable_stocks):
         if not tradeable_stocks:
             return {}
-        per_stock_capital = (self.current_equity * 5) / len(tradeable_stocks)  # Using 5x leverage
+        per_stock_capital = (self.current_equity * 1) / len(tradeable_stocks)  # Using 1x leverage
         return {stock: per_stock_capital for stock in tradeable_stocks}
     
     def generate_trades(self, stock, day_data, minute_data, available_capital):
-        # Sort gaps and select top N
-        if len(self.daily_gaps) >= self.top_n:
-            self.daily_gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
-            self.daily_gaps = self.daily_gaps[:self.top_n]
+        if minute_data is None or len(minute_data) < 1:
+            return []  # Need minute data for this strategy
             
-            # Check if current stock is in top N
-            if not any(gap['symbol'] == stock for gap in self.daily_gaps):
-                return []
+        # Get first minute data
+        first_minute = minute_data.iloc[0]
         
-        # Get current stock's gap info
+        # Get gap info
         gap = next(gap for gap in self.daily_gaps if gap['symbol'] == stock)
         
         # Calculate quantity using provided capital
         quantity = floor(available_capital / gap['open'])
         
-        # Generate trade
+        # Initialize trade
         trade = {
-            'Date': day_data.index[1],
-            'Current cash available': self.current_equity,
+            'Date': minute_data.index[0],
             'Stock': stock,
-            'Prev close': gap['prev_close'],
-            'Current open': gap['open'],
-            'Current close': gap['close'],
-            'Gap type': 'SHORT' if gap['gap_percent'] > 0 else 'LONG',
-            'Gap pct (absolute)': gap['abs_gap_percent'],
-            'Invested amount': available_capital,
-            'Quantity': quantity
+            'Current cash available': self.current_equity,
+            'Gap percent': gap['gap_percent'],
+            'Entry price': gap['open'],
+            'Exit price': first_minute['close'],
+            'Quantity': quantity,
+            'Trade type': 'SHORT' if gap['gap_percent'] > 0 else 'LONG'
         }
         
-        # Calculate P&L
+        # Calculate stop loss and take profit prices
         if gap['gap_percent'] > 0:  # Gap Up - Short
+            stop_loss_price = gap['open'] * (1 + self.stop_loss_pct/100)
+            take_profit_price = gap['open'] * (1 - self.take_profit_pct/100)
+            
+            # Check if stop loss or take profit was hit during the first minute
+            if first_minute['high'] >= stop_loss_price:
+                trade['Exit price'] = stop_loss_price
+                trade['Exit reason'] = 'Stop Loss'
+            elif first_minute['low'] <= take_profit_price:
+                trade['Exit price'] = take_profit_price
+                trade['Exit reason'] = 'Take Profit'
+            else:
+                trade['Exit price'] = first_minute['close']
+                trade['Exit reason'] = 'First Minute Close'
+                
+            # Calculate P&L
             entry_value = quantity * gap['open']
-            exit_value = quantity * gap['close']
+            exit_value = quantity * trade['Exit price']
             gross_pnl = entry_value - exit_value
-            fees = calculate_fees(entry_value, exit_value, 'SHORT')
+            
         else:  # Gap Down - Long
+            stop_loss_price = gap['open'] * (1 - self.stop_loss_pct/100)
+            take_profit_price = gap['open'] * (1 + self.take_profit_pct/100)
+            
+            # Check if stop loss or take profit was hit during the first minute
+            if first_minute['low'] <= stop_loss_price:
+                trade['Exit price'] = stop_loss_price
+                trade['Exit reason'] = 'Stop Loss'
+            elif first_minute['high'] >= take_profit_price:
+                trade['Exit price'] = take_profit_price
+                trade['Exit reason'] = 'Take Profit'
+            else:
+                trade['Exit price'] = first_minute['close']
+                trade['Exit reason'] = 'First Minute Close'
+                
+            # Calculate P&L
             entry_value = quantity * gap['open']
-            exit_value = quantity * gap['close']
+            exit_value = quantity * trade['Exit price']
             gross_pnl = exit_value - entry_value
-            fees = calculate_fees(entry_value, exit_value, 'LONG')
+        
+        # Calculate fees and final PNL
+        fees = calculate_fees(
+            entry_value, 
+            exit_value, 
+            'SHORT' if gap['gap_percent'] > 0 else 'LONG'
+        )
         
         trade.update({
             'Entry Value': entry_value,
@@ -97,13 +126,13 @@ def _run_backtest(from_date, to_date):
     """Run backtest for both investment amounts."""
     try:
         # Run for 1L
-        trader_1L = GapTraderFixedPosition(initial_capital=100000)
+        trader_1L = FirstMinuteGapTrader(initial_capital=100000)
         results_1L = trader_1L.run_backtest(from_date, to_date)
         if 'error' in results_1L:
             return results_1L
             
         # Run for 10L
-        trader_10L = GapTraderFixedPosition(initial_capital=1000000)
+        trader_10L = FirstMinuteGapTrader(initial_capital=1000000)
         results_10L = trader_10L.run_backtest(from_date, to_date)
         if 'error' in results_10L:
             return results_10L
@@ -142,13 +171,13 @@ def _run_backtest(from_date, to_date):
     except Exception as e:
         return {'error': f"Error in backtest: {str(e)}"}
 
-def run_backtest_fixed_position(from_date, to_date, force_run=False):
+def run_gaps_first_minute_with_sl_tp(from_date, to_date, force_run=False):
     """Public interface for running the backtest with caching support."""
-    strategy_name = 'gaps_trading_daywise_without_sl_tp_fixed_position'
+    strategy_name = 'gaps_trading_first_minute_with_sl_tp'
     return run_backtest_with_cache(
         strategy_name=strategy_name,
         from_date=from_date,
         to_date=to_date,
         backtest_func=_run_backtest,
         force_run=force_run
-    )
+    ) 

@@ -108,5 +108,18 @@ def gaps_without_sl_tp_fixed_position():
     
     return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html')
 
+@app.route('/strategies/gaps/trading_gaps_first_minute/with_sl_tp')
+def gaps_first_minute_with_sl_tp():
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    force_run = request.args.get('force_run', 'false').lower() == 'true'
+    
+    if from_date and to_date:
+        results = run_backtest('gaps_trading_first_minute_with_sl_tp', from_date, to_date, force_run=force_run)
+        return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html', 
+                             results=results)
+    
+    return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html')
+
 if __name__ == '__main__':
     app.run(debug=True)

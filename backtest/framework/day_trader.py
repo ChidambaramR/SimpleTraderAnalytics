@@ -24,10 +24,25 @@ class DayTrader(ABC):
         pass
         
     @abstractmethod
-    def generate_trades(self, stock, day_data, minute_data):
+    def generate_trades(self, stock, day_data, minute_data, available_capital):
         """
         Generate trades for a single stock on a single day.
         Returns: list of trade dictionaries
+        """
+        pass
+    
+    @abstractmethod
+    def reset_state_for_next_day(self):
+        """
+        Reset state for next day
+        """
+        pass
+    
+    @abstractmethod
+    def get_available_capital(self, tradeable_stocks):
+        """
+        Calculate available capital for each tradeable stock
+        Returns: dict mapping stock to available capital
         """
         pass
     
@@ -130,6 +145,9 @@ class DayTrader(ABC):
                         print(f"Error checking stock {stock}: {str(e)}")
                         continue
                 
+                # Get available capital for each stock
+                capital_allocation = self.get_available_capital(tradeable_stocks)
+                
                 # Second pass: Generate and execute trades only for tradeable stocks
                 for stock in tradeable_stocks:
                     try:
@@ -141,8 +159,8 @@ class DayTrader(ABC):
                         # Get minute data only for tradeable stocks
                         minute_slice = self.get_minute_data(stock, current_date)
                         
-                        # Generate and process trades
-                        day_trades = self.generate_trades(stock, day_slice, minute_slice)
+                        # Generate and process trades with allocated capital
+                        day_trades = self.generate_trades(stock, day_slice, minute_slice, capital_allocation[stock])
                         
                         for trade in day_trades:
                             self.trades.append(trade)
@@ -158,6 +176,7 @@ class DayTrader(ABC):
                 
                 # Update equity and drawdown
                 self.current_equity += daily_pnl
+                self.reset_state_for_next_day()
                 self.peak_equity = max(self.peak_equity, self.current_equity)
                 current_drawdown = self.peak_equity - self.current_equity
                 self.max_drawdown = max(self.max_drawdown, current_drawdown)

@@ -1,6 +1,6 @@
 from .gaps.trading_gaps_daywise.without_sl_tp import run_backtest as run_gaps_without_sl_tp
 from .gaps.trading_gaps_daywise.without_sl_tp_fixed_position import run_backtest_fixed_position
-
+from .gaps.trading_gaps_first_minute.with_sl_tp import run_gaps_first_minute_with_sl_tp
 def run_backtest(strategy_name, from_date, to_date, force_run=False):
     """
     Routes backtest requests to appropriate strategy implementations.
@@ -16,7 +16,8 @@ def run_backtest(strategy_name, from_date, to_date, force_run=False):
     """
     strategy_map = {
         'gaps_without_sl_tp': run_gaps_without_sl_tp,
-        'gaps_without_sl_tp_fixed_position': run_backtest_fixed_position
+        'gaps_without_sl_tp_fixed_position': run_backtest_fixed_position,
+        'gaps_trading_first_minute_with_sl_tp': run_gaps_first_minute_with_sl_tp
     }
     
     if strategy_name not in strategy_map:
