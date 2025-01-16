@@ -87,6 +87,46 @@
                     <td>₹{{ results.max_drawdown_1L|indian_currency }}</td>
                     <td>₹{{ results.max_drawdown_10L|indian_currency }}</td>
                 </tr>
+                <tr>
+                    <td>Average Profit per Trade</td>
+                    <td>₹{{ results.avg_profit_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_profit_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Loss per Trade</td>
+                    <td>₹{{ results.avg_loss_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_loss_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Profit</td>
+                    <td>₹{{ results.avg_daily_profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Loss</td>
+                    <td>₹{{ results.avg_daily_loss_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_loss_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Profit per Trade</td>
+                    <td>₹{{ results.percentile_90_profit_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_profit_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Loss per Trade</td>
+                    <td>₹{{ results.percentile_90_loss_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_loss_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Daily Profit</td>
+                    <td>₹{{ results.percentile_90_daily_profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_daily_profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>90th Percentile Daily Loss</td>
+                    <td>₹{{ results.percentile_90_daily_loss_1L|indian_currency }}</td>
+                    <td>₹{{ results.percentile_90_daily_loss_10L|indian_currency }}</td>
+                </tr>
             </tbody>
         </table>
     </div>
