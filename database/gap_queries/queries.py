@@ -2,6 +2,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 from ..utils.db_utils import get_db_and_tables
+import numpy as np
 
 def analyze_daily_total_gaps(from_date, to_date):
     """
@@ -388,4 +389,297 @@ def analyze_daily_gap_range_success_rates(from_date, to_date):
         }
         
     except Exception as e:
-        return {'error': f"Error analyzing gap range success rates: {str(e)}"} 
+        return {'error': f"Error analyzing gap range success rates: {str(e)}"}
+
+def analyze_first_minute_moves(from_date, to_date):
+    """
+    Analyzes first minute moves for gapped stocks.
+    Returns statistics about gap ups that moved down and gap downs that moved up.
+    """
+    try:
+        day_conn, tables = get_db_and_tables('day')
+        minute_connections = get_db_and_tables('minute')
+        
+        from_date = f"{from_date} 00:00:00"
+        to_date = f"{to_date} 23:59:59"
+        
+        total_instances = 0
+        gap_up_total = 0
+        gap_up_down_moves = 0
+        
+        gap_down_total = 0
+        gap_down_up_moves = 0
+        
+        # Store all moves for statistical analysis
+        gap_up_down_moves_list = []
+        gap_down_up_moves_list = []
+
+        for table in tables['name']:
+            print(f"\nProcessing stock: {table}")
+            
+            # Get daily data for gap identification
+            query = f"""
+            SELECT 
+                date(ts) as date,
+                FIRST_VALUE(open) OVER (PARTITION BY date(ts)) as open,
+                LAST_VALUE(close) OVER (PARTITION BY date(ts)) as close
+            FROM "{table}"
+            WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+            GROUP BY date(ts)
+            ORDER BY date(ts)
+            """
+            
+            df = pd.read_sql_query(query, day_conn, params=(from_date, to_date))
+            
+            if len(df) > 0:
+                # Convert date to datetime for proper indexing
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
+                
+                # Calculate gaps
+                df['prev_close'] = df['close'].shift(1)
+                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+                
+                # Count total instances (excluding first day of each stock)
+                total_instances += len(df) - 1
+                
+                # Only process if stock has minute data
+                if table in minute_connections:
+                    # Load all minute data for this stock in the date range
+                    minute_query = f"""
+                    SELECT 
+                        date(ts) as date,
+                        FIRST_VALUE(open) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_open,
+                        FIRST_VALUE(close) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_close
+                    FROM "{table}"
+                    WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+                    GROUP BY date(ts)
+                    """
+                    minute_df = pd.read_sql_query(minute_query, minute_connections[table], 
+                                                params=(from_date, to_date))
+
+                    if len(minute_df) > 0:
+                        minute_df['date'] = pd.to_datetime(minute_df['date'])
+                        minute_df.set_index('date', inplace=True)
+                    
+                    # Process each day
+                    for date in df.index[1:]:  # Skip first day
+                        gap_percent = df.loc[date, 'gap_percent']
+                        
+                        # Get first minute data for this date
+                        if date in minute_df.index:
+                            first_min_open = minute_df.loc[date, 'first_min_open']
+                            first_min_close = minute_df.loc[date, 'first_min_close']
+                            first_min_move = ((first_min_close - first_min_open) / first_min_open) * 100
+                            
+                            if gap_percent > 3:  # Gap Up
+                                gap_up_total += 1
+                                if first_min_close < first_min_open:  # Moved down
+                                    gap_up_down_moves += 1
+                                    gap_up_down_moves_list.append(abs(first_min_move))
+                                    
+                            elif gap_percent < -3:  # Gap Down
+                                gap_down_total += 1
+                                if first_min_close > first_min_open:  # Moved up
+                                    gap_down_up_moves += 1
+                                    gap_down_up_moves_list.append(first_min_move)
+                    
+                    # Clear minute data from memory
+                    del minute_df
+        
+        # Close connections
+        day_conn.close()
+        for conn in set(minute_connections.values()):
+            conn.close()
+        
+        # Calculate statistics
+        gap_up_stats = {
+            'avg': 0,
+            'std': 0,
+            'p90': 0
+        }
+        
+        gap_down_stats = {
+            'avg': 0,
+            'std': 0,
+            'p90': 0
+        }
+        
+        if gap_up_down_moves_list:
+            gap_up_stats = {
+                'avg': np.mean(gap_up_down_moves_list),
+                'std': np.std(gap_up_down_moves_list),
+                'p90': np.percentile(gap_up_down_moves_list, 90)
+            }
+            
+        if gap_down_up_moves_list:
+            gap_down_stats = {
+                'avg': np.mean(gap_down_up_moves_list),
+                'std': np.std(gap_down_up_moves_list),
+                'p90': np.percentile(gap_down_up_moves_list, 90)
+            }
+        
+        return {
+            'total_instances': total_instances,
+            'details': {
+                'gap_up': {
+                    'total': gap_up_total,
+                    'moved_down': gap_up_down_moves,
+                    'avg_move': f"{gap_up_stats['avg']:.2f}%",
+                    'std_move': f"{gap_up_stats['std']:.2f}%",
+                    'p90_move': f"{gap_up_stats['p90']:.2f}%"
+                },
+                'gap_down': {
+                    'total': gap_down_total,
+                    'moved_up': gap_down_up_moves,
+                    'avg_move': f"{gap_down_stats['avg']:.2f}%",
+                    'std_move': f"{gap_down_stats['std']:.2f}%",
+                    'p90_move': f"{gap_down_stats['p90']:.2f}%"
+                }
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error in analyze_first_minute_moves: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {'error': f"Error analyzing first minute moves: {str(e)}"}
+
+def analyze_first_minute_rest_of_day_moves(from_date, to_date):
+    """
+    Analyzes how price moves after first minute for different gap and first minute scenarios.
+    """
+    try:
+        day_conn, tables = get_db_and_tables('day')
+        minute_connections = get_db_and_tables('minute')
+        
+        from_date = f"{from_date} 00:00:00"
+        to_date = f"{to_date} 23:59:59"
+        
+        # Counters for different scenarios
+        gap_up_first_up = {'total': 0, 'crossed_down': 0}
+        gap_up_first_down = {'total': 0, 'crossed_up': 0}
+        gap_down_first_up = {'total': 0, 'crossed_down': 0}
+        gap_down_first_down = {'total': 0, 'crossed_up': 0}
+
+        for table in tables['name']:
+            # Get daily data
+            query = f"""
+            SELECT 
+                date(ts) as date,
+                FIRST_VALUE(open) OVER (PARTITION BY date(ts)) as open,
+                LAST_VALUE(close) OVER (PARTITION BY date(ts)) as close
+            FROM "{table}"
+            WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+            GROUP BY date(ts)
+            ORDER BY date(ts)
+            """
+            
+            df = pd.read_sql_query(query, day_conn, params=(from_date, to_date))
+            
+            if len(df) > 0 and table in minute_connections:
+                # Process daily data
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
+                df['prev_close'] = df['close'].shift(1)
+                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+                
+                # Get minute data for the entire period
+                minute_query = f"""
+                SELECT 
+                    date(ts) as date,
+                    time(ts) as time,
+                    FIRST_VALUE(open) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_open,
+                    FIRST_VALUE(close) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_close,
+                    high,
+                    low
+                FROM "{table}"
+                WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
+                """
+                minute_df = pd.read_sql_query(minute_query, minute_connections[table], 
+                                            params=(from_date, to_date))
+                
+                if len(minute_df) > 0:
+                    minute_df['date'] = pd.to_datetime(minute_df['date'])
+                    
+                    # Process each day
+                    for date in df.index[1:]:  # Skip first day
+                        gap_percent = df.loc[date, 'gap_percent']
+                        day_open = df.loc[date, 'open']
+                        
+                        # Get this day's minute data
+                        day_minute_data = minute_df[minute_df['date'] == date]
+                        if len(day_minute_data) < 2:  # Need at least 2 minutes of data
+                            continue
+                            
+                        # Get first minute data
+                        first_min = day_minute_data.iloc[0]
+                        first_min_open = first_min['first_min_open']
+                        first_min_close = first_min['first_min_close']
+                        first_min_move = ((first_min_close - first_min_open) / first_min_open) * 100
+                        
+                        # Get rest of day data (after 09:16)
+                        rest_of_day = day_minute_data[day_minute_data['time'] > '09:16']
+                        if len(rest_of_day) == 0:
+                            continue
+                            
+                        if gap_percent > 3:  # Gap Up
+                            if first_min_close > first_min_open:  # First minute up
+                                gap_up_first_up['total'] += 1
+                                if rest_of_day['low'].min() < day_open:
+                                    gap_up_first_up['crossed_down'] += 1
+                            else:  # First minute down
+                                gap_up_first_down['total'] += 1
+                                if rest_of_day['high'].max() > day_open:
+                                    gap_up_first_down['crossed_up'] += 1
+                                    
+                        elif gap_percent < -3:  # Gap Down
+                            if first_min_close > first_min_open:  # First minute up
+                                gap_down_first_up['total'] += 1
+                                if rest_of_day['low'].min() < day_open:
+                                    gap_down_first_up['crossed_down'] += 1
+                            else:  # First minute down
+                                gap_down_first_down['total'] += 1
+                                if rest_of_day['high'].max() > day_open:
+                                    gap_down_first_down['crossed_up'] += 1
+                    
+                    del day_minute_data
+                del minute_df
+        
+        # Close connections
+        day_conn.close()
+        for conn in set(minute_connections.values()):
+            conn.close()
+        
+        return {
+            'gap_up_first_up': {
+                'total': gap_up_first_up['total'],
+                'crossed_down': gap_up_first_up['crossed_down'],
+                'crossed_percent': (gap_up_first_up['crossed_down'] / gap_up_first_up['total'] * 100) 
+                                 if gap_up_first_up['total'] > 0 else 0
+            },
+            'gap_up_first_down': {
+                'total': gap_up_first_down['total'],
+                'crossed_up': gap_up_first_down['crossed_up'],
+                'crossed_percent': (gap_up_first_down['crossed_up'] / gap_up_first_down['total'] * 100)
+                                 if gap_up_first_down['total'] > 0 else 0
+            },
+            'gap_down_first_up': {
+                'total': gap_down_first_up['total'],
+                'crossed_down': gap_down_first_up['crossed_down'],
+                'crossed_percent': (gap_down_first_up['crossed_down'] / gap_down_first_up['total'] * 100)
+                                 if gap_down_first_up['total'] > 0 else 0
+            },
+            'gap_down_first_down': {
+                'total': gap_down_first_down['total'],
+                'crossed_up': gap_down_first_down['crossed_up'],
+                'crossed_percent': (gap_down_first_down['crossed_up'] / gap_down_first_down['total'] * 100)
+                                 if gap_down_first_down['total'] > 0 else 0
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error in analyze_first_minute_rest_of_day_moves: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {'error': f"Error analyzing rest of day moves: {str(e)}"} 

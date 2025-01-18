@@ -4,7 +4,9 @@ from database.gap_queries.queries import (
     analyze_daily_gap_closures,
     analyze_daily_gap_ranges,
     analyze_daily_successful_gap_ranges,
-    analyze_daily_gap_range_success_rates
+    analyze_daily_gap_range_success_rates,
+    analyze_first_minute_moves,
+    analyze_first_minute_rest_of_day_moves
 )
 from backtest.router import run_backtest
 
@@ -120,6 +122,24 @@ def gaps_first_minute_with_sl_tp():
                              results=results)
     
     return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html')
+
+@app.route('/facts/gaps/first-minute', methods=['GET', 'POST'])
+def gaps_first_minute():
+    results = None
+    if request.method == 'POST':
+        from_date = request.form.get('from_date')
+        to_date = request.form.get('to_date')
+        first_min_results = analyze_first_minute_moves(from_date, to_date)
+        rest_of_day_results = analyze_first_minute_rest_of_day_moves(from_date, to_date)
+        
+        # Combine both results
+        results = {
+            'total_instances': first_min_results['total_instances'],
+            'details': first_min_results['details'],
+            'rest_of_day': rest_of_day_results
+        }
+        
+    return render_template('facts/gaps/first_minute.html', results=results)
 
 if __name__ == '__main__':
     app.run(debug=True)
