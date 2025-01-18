@@ -5,44 +5,48 @@
     <h2>Trading First Minute of Gapped Stocks with Stop Loss and Take Profit</h2>
     <p>
         This strategy trades the first minute of stocks that gap up or down. On a gap up, we short the stock at open 
-        and exit at the first minute's close. On a gap down, we go long at open and exit at the first minute's close. 
-        We use stop loss and take profit to manage risk.
-    </p>
-    <p>
-        <strong>Rules:</strong>
-        <ul>
-            <li>Gap threshold: 3%</li>
-            <li>Stop Loss: 0.75% from entry</li>
-            <li>Take Profit: 2% from entry</li>
-            <li>Entry: At market open</li>
-            <li>Exit: Either at first minute close, stop loss hit, or take profit hit</li>
-            <li>Position sizing: Equal distribution of capital among all trades</li>
-            <li>Leverage: 5x</li>
-        </ul>
+        and exit at the specified minute's open price. On a gap down, we go long at open and exit at the specified minute's open price. 
+        The position will be closed earlier if stop loss or take profit is hit during any minute, or at the specified exit time.
     </p>
 </div>
 
-<div class="backtest-form">
-    <form method="GET" action="{{ url_for('gaps_first_minute_with_sl_tp') }}" class="mb-4">
+<div class="backtest-form mb-4">
+    <form method="GET" action="{{ url_for('gaps_first_minute_with_sl_tp') }}">
         <div class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="from_date" class="form-label">From Date</label>
                 <input type="date" class="form-control" id="from_date" name="from_date" 
                        value="{{ request.args.get('from_date', '') }}" required>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="to_date" class="form-label">To Date</label>
                 <input type="date" class="form-control" id="to_date" name="to_date" 
                        value="{{ request.args.get('to_date', '') }}" required>
             </div>
-            <div class="col-md-3 align-self-end">
-                <div class="form-check">
+            <div class="col-md-2">
+                <label for="stop_loss" class="form-label">SL %</label>
+                <input type="number" class="form-control" id="stop_loss" name="stop_loss" 
+                       value="{{ request.args.get('stop_loss', '0.75') }}" step="0.01" required>
+            </div>
+            <div class="col-md-1">
+                <label for="take_profit" class="form-label">TP %</label>
+                <input type="number" class="form-control" id="take_profit" name="take_profit" 
+                       value="{{ request.args.get('take_profit', '2') }}" step="0.01" required>
+            </div>
+            <div class="col-md-2">
+                <label for="exit_time" class="form-label">Exit Time (HH:MM)</label>
+                <input type="text" class="form-control" id="exit_time" name="exit_time" 
+                       value="{{ request.args.get('exit_time', '09:16') }}" 
+                       pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" required>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-4">
                     <input class="form-check-input" type="checkbox" id="force_run" name="force_run" 
                            value="true" {% if request.args.get('force_run') == 'true' %}checked{% endif %}>
                     <label class="form-check-label" for="force_run">Force Rerun</label>
                 </div>
             </div>
-            <div class="col-md-3 align-self-end">
+            <div class="col-md-1 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary">Run Backtest</button>
             </div>
         </div>

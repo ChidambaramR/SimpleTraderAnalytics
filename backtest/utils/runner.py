@@ -1,6 +1,6 @@
 from .db_utils import save_backtest_results, get_backtest_results
 
-def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, force_run=False):
+def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, force_run=False, args={}):
     """
     Generic backtest runner with caching functionality.
     
@@ -19,7 +19,7 @@ def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, fo
                 return cached_results
         
         # Run backtest
-        results = backtest_func(from_date, to_date)
+        results = backtest_func(from_date, to_date, args)
         
         # Only cache if there's no error
         if 'error' not in results:

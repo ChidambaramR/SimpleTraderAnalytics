@@ -117,7 +117,17 @@ def gaps_first_minute_with_sl_tp():
     force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
-        results = run_backtest('gaps_trading_first_minute_with_sl_tp', from_date, to_date, force_run=force_run)
+        args = {
+            'stop_loss_pct': float(request.args.get('stop_loss', 0.75)),
+            'take_profit_pct': float(request.args.get('take_profit', 2)),
+            'exit_time': request.args.get('exit_time', '09:16')
+        }
+
+        results = run_backtest('gaps_trading_first_minute_with_sl_tp', 
+                             from_date, 
+                             to_date, 
+                             force_run=force_run,
+                             args=args)
         return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html', 
                              results=results)
     
