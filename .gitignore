@@ -8,7 +8,7 @@ __pycache__/
 
 *.xlsx
 *.db
-*.DS_Store
+.DS_Store
 *.db*
 # Dont publish db files
 database/ohlc_data/*.db
