@@ -139,7 +139,9 @@ def gaps_first_minute():
     if request.method == 'POST':
         from_date = request.form.get('from_date')
         to_date = request.form.get('to_date')
-        first_min_results = analyze_first_minute_moves(from_date, to_date)
+        analysis_time = request.form.get('analysis_time', '09:15')
+        
+        first_min_results = analyze_first_minute_moves(from_date, to_date, analysis_time)
         rest_of_day_results = analyze_first_minute_rest_of_day_moves(from_date, to_date)
         
         # Combine both results
