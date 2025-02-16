@@ -9,7 +9,7 @@ from database.gap_queries.queries import (
     analyze_first_minute_rest_of_day_moves
 )
 from backtest.router import run_backtest
-from prod_stats.utils import get_pre_market_ticks_data
+from prod_stats.utils import get_pre_market_ticks_data, prepare_depth_data
 from trader_stats.utils import get_opening_gaps_trader_stats
 from datetime import datetime
 
@@ -199,7 +199,8 @@ def analyze_pre_market_ticks():
                           df=df, 
                           summary=summary,
                           date=date,
-                          symbol=symbol)
+                          symbol=symbol,
+                          prepare_depth_data=prepare_depth_data)
 
 if __name__ == '__main__':
     app.run(debug=True)

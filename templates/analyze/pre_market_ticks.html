@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 
+{% macro price_cell(price, color_class, rowspan=None) %}
+{% if rowspan %}
+<td rowspan="{{ rowspan }}" class="bg-{{ color_class }}">{{ price }}</td>
+{% else %}
+<td class="bg-{{ color_class }}">{{ price }}</td>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="pre-market-container">
     <h1>Pre-Market Ticks Analysis</h1>
@@ -23,11 +31,9 @@
         </div>
     </form>
 
-    <!-- Add this right after the form -->
     {% if date and symbol and df is none %}
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Auto-submit the form if we have date and symbol but no results yet
         document.querySelector('form').submit();
     });
     </script>
@@ -63,71 +69,40 @@
             </table>
         </div>
 
-        <div class="chart-section mb-4">
-            <div class="mb-4">
-                <h2>Open Price Trend</h2>
-                <div class="chart-container" style="position: relative; height:300px; width:100%">
-                    <canvas id="openPriceChart"></canvas>
-                </div>
-            </div>
-            <div class="mb-4">
-                <h2>Buy Depth</h2>
-                <div class="chart-container" style="position: relative; height:300px; width:100%">
-                    <canvas id="buyDepthChart"></canvas>
-                </div>
-            </div>
-            <div class="mb-4">
-                <h2>Sell Depth</h2>
-                <div class="chart-container" style="position: relative; height:300px; width:100%">
-                    <canvas id="sellDepthChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <h2>Pre-Market Ticks Data</h2>
-        <div class="table-responsive">
-            <table class="table table-striped table-bordered pre-market-table">
+        <h2>Market Depth Analysis</h2>
+        <div class="table-responsive mb-4">
+            <table class="table table-striped table-bordered">
                 <thead>
                     <tr>
-                        {% for column in df.columns %}
-                        {% if column != 'open_color' %}  {# Skip open_color column #}
-                        <th>
-                            {% if column == 'ts' %}
-                                Timestamp
-                            {% elif column == 'volume_traded' %}
-                                Volume
-                            {% elif column == 'total_buy_quantity' %}
-                                BuyQty
-                            {% elif column == 'total_sell_quantity' %}
-                                SellQty
-                            {% else %}
-                                {{ column }}
-                            {% endif %}
-                        </th>
-                        {% endif %}
-                        {% endfor %}
+                        <th>Time</th>
+                        <th>Equilibrium Price</th>
+                        <th>Price</th>
+                        <th>Buy Orders</th>
+                        <th>Buy Quantity</th>
+                        <th>Cumulative Buy Qty</th>
+                        <th>Sell Orders</th>
+                        <th>Sell Quantity</th>
+                        <th>Cumulative Sell Qty</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for index, row in df.iterrows() %}
+                    {% set depth_data = prepare_depth_data(row) %}
+                    {% for _, depth_row in depth_data.iterrows() %}
                     <tr>
-                        {% for column in df.columns %}
-                        <td {% if column == 'ts' %}style="min-width: 150px;"{% endif %}
-                            {% if column == 'open' %}
-                                class="bg-{{ row['open_color'] }}"
-                            {% endif %}>
-                            {% if column.startswith('buy_depth_') or column.startswith('sell_depth_') %}
-                                {% if row[column] %}
-                                    {{ row[column]['orders'] }} : {{ row[column]['price'] }} : {{ row[column]['quantity'] }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            {% elif column != 'open_color' %}  {# Don't display the color column #}
-                                {{ row[column] }}
-                            {% endif %}
-                        </td>
-                        {% endfor %}
+                        {% if loop.first %}
+                        <td rowspan="{{ depth_data|length }}">{{ row.ts.strftime("%H:%M:%S") }}</td>
+                        {{ price_cell(row.open, row.open_color, rowspan=depth_data|length) }}
+                        {% endif %}
+                        <td>{{ depth_row.price }}</td>
+                        <td>{{ depth_row.buy_orders }}</td>
+                        <td>{{ depth_row.buy_quantity }}</td>
+                        <td>{{ depth_row.cumulative_buy_quantity }}</td>
+                        <td>{{ depth_row.sell_orders }}</td>
+                        <td>{{ depth_row.sell_quantity }}</td>
+                        <td>{{ depth_row.cumulative_sell_quantity }}</td>
                     </tr>
+                    {% endfor %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -135,138 +110,4 @@
     </div>
     {% endif %}
 </div>
-
-{% if df is defined and df is not none %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Time labels for all charts
-    const timeLabels = [{% for index, row in df.iterrows() %}
-        '{{ row.ts.strftime("%H:%M:%S") }}',
-    {% endfor %}];
-
-    // Open Price Chart
-    new Chart(
-        document.getElementById('openPriceChart'),
-        {
-            type: 'line',
-            data: {
-                labels: timeLabels,
-                datasets: [{
-                    label: 'Open Price',
-                    data: [{% for index, row in df.iterrows() %}
-                        {{ row.open }},
-                    {% endfor %}],
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    pointRadius: 0  // Remove points
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Open Price vs Time'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false
-                    }
-                }
-            }
-        }
-    );
-
-    // Buy Depth Chart
-    new Chart(
-        document.getElementById('buyDepthChart'),
-        {
-            type: 'line',
-            data: {
-                labels: timeLabels,
-                datasets: [
-                    {% for i in range(1, 6) %}
-                    {
-                        label: 'Level {{ i }}',
-                        data: [{% for index, row in df.iterrows() %}
-                            {{ row['buy_depth_' ~ i]['quantity'] if row['buy_depth_' ~ i] else 0 }},
-                        {% endfor %}],
-                        borderColor: '{{ ["#2E8B57", "#3CB371", "#90EE90", "#98FB98", "#E0FFF0"][i-1] }}',
-                        borderWidth: 2,
-                        fill: false,
-                        pointRadius: 0  // Remove points
-                    },
-                    {% endfor %}
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Buy Depth Over Time'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Quantity'
-                        }
-                    }
-                }
-            }
-        }
-    );
-
-    // Sell Depth Chart
-    new Chart(
-        document.getElementById('sellDepthChart'),
-        {
-            type: 'line',
-            data: {
-                labels: timeLabels,
-                datasets: [
-                    {% for i in range(1, 6) %}
-                    {
-                        label: 'Level {{ i }}',
-                        data: [{% for index, row in df.iterrows() %}
-                            {{ row['sell_depth_' ~ i]['quantity'] if row['sell_depth_' ~ i] else 0 }},
-                        {% endfor %}],
-                        borderColor: '{{ ["#8B0000", "#DC143C", "#FF4500", "#FF6347", "#FFA07A"][i-1] }}',
-                        borderWidth: 2,
-                        fill: false,
-                        pointRadius: 0  // Remove points
-                    },
-                    {% endfor %}
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Sell Depth Over Time'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Quantity'
-                        }
-                    }
-                }
-            }
-        }
-    );
-});
-</script>
-{% endif %}
 {% endblock %} 

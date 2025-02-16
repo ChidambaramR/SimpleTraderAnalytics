@@ -117,13 +117,10 @@ def get_pre_market_ticks_data(date, stock):
             'close': df['close'].iloc[0]
         }
         
-        # Remove these columns from main DataFrame
+        # Keep only necessary columns
         columns = [
             'exchange_timestamp',
-            'volume_traded',
-            'total_buy_quantity',
-            'total_sell_quantity',
-            'open'  # Keep only open, remove high, low, close
+            'open'
         ]
         
         # Add depth columns
@@ -185,3 +182,85 @@ def get_pre_market_ticks_data(date, stock):
         print(f"Error processing pre-market ticks data: {str(e)}")
         print(f"File path: {file_path}")
         return None, None
+
+def prepare_depth_data(row):
+    """
+    Prepares market depth data organized by price points.
+    Returns a DataFrame with buy and sell information at each price level.
+    Market orders (depth_5) are added as a separate row at price 0.
+    """
+    # Initialize lists to store all price points and their data
+    price_data = []
+    market_order_row = None
+    
+    # Get market orders (depth_5) quantities and save as separate row
+    market_buy_qty = row['buy_depth_5']['quantity'] if row['buy_depth_5'] else 0
+    market_sell_qty = row['sell_depth_5']['quantity'] if row['sell_depth_5'] else 0
+    
+    # Create market orders row but don't add to price_data yet
+    if market_buy_qty > 0 or market_sell_qty > 0:
+        market_order_row = {
+            'price': 0,  # Market orders
+            'buy_orders': row['buy_depth_5']['orders'] if row['buy_depth_5'] else 0,
+            'buy_quantity': market_buy_qty,
+            'sell_orders': row['sell_depth_5']['orders'] if row['sell_depth_5'] else 0,
+            'sell_quantity': market_sell_qty
+        }
+    
+    # Collect all buy depth data (excluding depth_5)
+    for i in range(1, 5):  # Only include regular orders (1-4)
+        buy_depth = row[f'buy_depth_{i}']
+        if buy_depth:
+            price_data.append({
+                'price': buy_depth['price'],
+                'buy_orders': buy_depth['orders'],
+                'buy_quantity': buy_depth['quantity'],
+                'sell_orders': 0,
+                'sell_quantity': 0
+            })
+    
+    # Collect all sell depth data (excluding depth_5)
+    for i in range(1, 5):  # Only include regular orders (1-4)
+        sell_depth = row[f'sell_depth_{i}']
+        if sell_depth:
+            # Check if price point already exists
+            existing_price = next(
+                (item for item in price_data if item['price'] == sell_depth['price']), 
+                None
+            )
+            
+            if existing_price:
+                existing_price['sell_orders'] = sell_depth['orders']
+                existing_price['sell_quantity'] = sell_depth['quantity']
+            else:
+                price_data.append({
+                    'price': sell_depth['price'],
+                    'buy_orders': 0,
+                    'buy_quantity': 0,
+                    'sell_orders': sell_depth['orders'],
+                    'sell_quantity': sell_depth['quantity']
+                })
+    
+    # Sort by price in descending order (excluding market orders)
+    price_data.sort(key=lambda x: x['price'], reverse=True)
+    
+    # Add market orders row at the beginning if it exists
+    if market_order_row:
+        price_data.insert(0, market_order_row)
+    
+    # Create DataFrame
+    depth_df = pd.DataFrame(price_data)
+    
+    # Calculate cumulative quantities
+    if not depth_df.empty:
+        # For buy orders - cumulate from highest price to lowest
+        depth_df['cumulative_buy_quantity'] = depth_df['buy_quantity'].cumsum()
+        
+        # For sell orders - cumulate from lowest price to highest
+        depth_df['cumulative_sell_quantity'] = depth_df['sell_quantity'][::-1].cumsum()[::-1]
+    else:
+        # Add empty columns if no data
+        depth_df['cumulative_buy_quantity'] = 0
+        depth_df['cumulative_sell_quantity'] = 0
+    
+    return depth_df
