@@ -120,7 +120,9 @@ def get_pre_market_ticks_data(date, stock):
         # Keep only necessary columns
         columns = [
             'exchange_timestamp',
-            'open'
+            'open',
+            'total_buy_quantity',
+            'total_sell_quantity',
         ]
         
         # Add depth columns

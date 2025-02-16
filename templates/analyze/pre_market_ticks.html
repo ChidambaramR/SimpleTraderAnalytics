@@ -69,6 +69,96 @@
             </table>
         </div>
 
+        <h2>Equilibrium Price vs Total Buy/Sell Quantity</h2>
+        <div class="chart-container mb-4" style="position: relative; height:400px; width:100vw; margin-left: calc(-50vw + 50%);">
+            <canvas id="priceVolumeChart"></canvas>
+        </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('priceVolumeChart').getContext('2d');
+            
+            // Prepare data
+            const data = {
+                timestamps: [{% for index, row in df.iterrows() %}'{{ row.ts.strftime("%H:%M:%S") }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+                prices: [{% for index, row in df.iterrows() %}{{ row.open }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                buyVolumes: [{% for index, row in df.iterrows() %}{{ row.total_buy_quantity }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                sellVolumes: [{% for index, row in df.iterrows() %}{{ row.total_sell_quantity }}{% if not loop.last %}, {% endif %}{% endfor %}]
+            };
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.timestamps,
+                    datasets: [
+                        {
+                            label: 'Equilibrium Price',
+                            data: data.prices,
+                            borderColor: 'rgb(75, 192, 192)',
+                            borderWidth: 1.5,
+                            yAxisID: 'y',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        },
+                        {
+                            label: 'Total Buy Quantity',
+                            data: data.buyVolumes,
+                            borderColor: 'rgb(75, 192, 75)',
+                            borderWidth: 1.5,
+                            yAxisID: 'y1',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        },
+                        {
+                            label: 'Total Sell Quantity',
+                            data: data.sellVolumes,
+                            borderColor: 'rgb(192, 75, 75)',
+                            borderWidth: 1.5,
+                            yAxisID: 'y1',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    stacked: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Equilibrium Price'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Total Quantity'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        </script>
+
         <h2>Market Depth Analysis</h2>
         <div class="table-responsive mb-4">
             <table class="table table-striped table-bordered">
