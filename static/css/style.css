@@ -11,9 +11,10 @@
 }
 
 .results-section {
-    background-color: #f8f9fa;
+    background-color: white;
     padding: 20px;
     border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .results-section pre {
@@ -88,4 +89,138 @@
 .form-check-label {
     cursor: pointer;
     user-select: none;
+}
+
+.stats-form {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+}
+
+.table pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.8em;
+}
+
+.table td {
+    max-width: 200px;
+    overflow: auto;
+}
+
+/* Update pre-market styles */
+.pre-market-container {
+    width: 100%;
+    padding: 0 20px;
+    margin: 0;
+}
+
+.pre-market-table {
+    width: 100%;
+    white-space: nowrap;
+    table-layout: auto;
+}
+
+.pre-market-table td {
+    padding: 8px;
+}
+
+.pre-market-table pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.8em;
+}
+
+.table-responsive {
+    max-width: none;  /* Remove max-width restriction */
+}
+
+/* Remove any max-width from these classes for the pre-market page */
+.pre-market-container .results-section {
+    max-width: none;
+    width: 100%;
+}
+
+/* Color classes for open value changes */
+.bg-danger {
+    background-color: #dc3545 !important;
+    color: white;
+}
+
+.bg-warning {
+    background-color: #ffa6a6 !important;
+}
+
+.bg-light-danger {
+    background-color: #ffe0e0 !important;
+}
+
+.bg-success {
+    background-color: #28a745 !important;
+    color: white;
+}
+
+.bg-info {
+    background-color: #90EE90 !important;
+}
+
+.bg-light-success {
+    background-color: #e0ffe0 !important;
+}
+
+.chart-section {
+    background-color: white;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-section canvas {
+    background-color: white;
+}
+
+/* Trader stats styles */
+.trader-stats-container {
+    width: 100%;
+    padding: 0 20px;
+    margin: 0;
+}
+
+.trader-stats-table {
+    width: 100%;
+    white-space: nowrap;
+    table-layout: auto;
+}
+
+.trader-stats-table td {
+    padding: 8px;
+}
+
+/* Remove max-width from these classes for the trader stats page */
+.trader-stats-container .results-section {
+    max-width: none;
+    width: 100%;
+}
+
+/* Row colors for trader stats */
+.trader-stats-table .profit-row {
+    background-color: #e0ffe0 !important;  /* Mild green */
+}
+
+.trader-stats-table .profit-row:hover {
+    background-color: #d0ffd0 !important;  /* Slightly darker green on hover */
+}
+
+.trader-stats-table .loss-row {
+    background-color: #ffe0e0 !important;  /* Mild red */
+}
+
+.trader-stats-table .loss-row:hover {
+    background-color: #ffd0d0 !important;  /* Slightly darker red on hover */
 }

@@ -12,7 +12,7 @@ __pycache__/
 *.db*
 # Dont publish db files
 database/ohlc_data/*.db
-
+prod_stats/data/*
 # Distribution / packaging
 .Python
 build/

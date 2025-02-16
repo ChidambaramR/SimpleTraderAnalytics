@@ -9,6 +9,9 @@ from database.gap_queries.queries import (
     analyze_first_minute_rest_of_day_moves
 )
 from backtest.router import run_backtest
+from prod_stats.utils import get_pre_market_ticks_data
+from trader_stats.utils import get_opening_gaps_trader_stats
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -53,8 +56,8 @@ app.jinja_env.filters['indian_currency'] = format_indian_currency
 def home():
     return render_template('home.html')
 
-@app.route('/facts/gaps', methods=['GET', 'POST'])
-def gaps():
+@app.route('/analyze/gaps', methods=['GET', 'POST'])
+def analyze_gaps():
     results = None
     if request.method == 'POST':
         from_date = request.form.get('from_date')
@@ -82,7 +85,7 @@ def gaps():
             'success_rates': success_rates_data
         }
         
-    return render_template('facts/gaps/index.html', results=results)
+    return render_template('analyze/gaps/index.html', results=results)
 
 @app.route('/strategies/gaps/trading-gaps-daywise/without-sl-tp')
 def gaps_without_sl_tp():
@@ -133,8 +136,8 @@ def gaps_first_minute_with_sl_tp():
     
     return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html')
 
-@app.route('/facts/gaps/first-minute', methods=['GET', 'POST'])
-def gaps_first_minute():
+@app.route('/analyze/gaps/first-minute', methods=['GET', 'POST'])
+def analyze_gaps_first_minute():
     results = None
     if request.method == 'POST':
         from_date = request.form.get('from_date')
@@ -151,7 +154,52 @@ def gaps_first_minute():
             'rest_of_day': rest_of_day_results
         }
         
-    return render_template('facts/gaps/first_minute.html', results=results)
+    return render_template('analyze/gaps/first_minute.html', results=results)
+
+@app.route('/trader-stats/opening-gaps-trader')
+def opening_gaps_trader_stats():
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    result_type = request.args.get('result_type', 'ANY')
+    
+    if from_date and to_date:
+        try:
+            # Convert dates to datetime
+            from_date = datetime.strptime(from_date, '%Y-%m-%d')
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            
+            # Get stats data
+            df = get_opening_gaps_trader_stats(from_date, to_date, result_type)
+            
+            return render_template('trader_stats/opening_gaps_trader.html', 
+                                 df=df,
+                                 from_date=from_date.strftime('%Y-%m-%d'),
+                                 to_date=to_date.strftime('%Y-%m-%d'),
+                                 result_type=result_type)
+        except Exception as e:
+            print(f"Error processing stats: {str(e)}")
+            return render_template('trader_stats/opening_gaps_trader.html', error=str(e))
+    
+    return render_template('trader_stats/opening_gaps_trader.html')
+
+@app.route('/analyze/pre-market-ticks', methods=['GET', 'POST'])
+def analyze_pre_market_ticks():
+    df = None
+    summary = None
+    
+    # Get date and symbol from either POST or GET
+    date = request.form.get('date') or request.args.get('date')
+    symbol = request.form.get('symbol') or request.args.get('symbol')
+    
+    # If we have parameters, treat it as a form submission
+    if date and symbol:
+        df, summary = get_pre_market_ticks_data(date, symbol)
+            
+    return render_template('analyze/pre_market_ticks.html', 
+                          df=df, 
+                          summary=summary,
+                          date=date,
+                          symbol=symbol)
 
 if __name__ == '__main__':
     app.run(debug=True)

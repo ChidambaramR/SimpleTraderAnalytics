@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>GAPS Analysis</h1>
+
+<form method="POST" action="{{ url_for('analyze_gaps') }}" class="mb-4">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label for="from_date" class="form-label">From Date</label>
+            <input type="date" class="form-control" id="from_date" name="from_date" 
+                   value="{{ request.form.get('from_date', '') }}" required>
+        </div>
+        <div class="col-md-3">
+            <label for="to_date" class="form-label">To Date</label>
+            <input type="date" class="form-control" id="to_date" name="to_date" 
+                   value="{{ request.form.get('to_date', '') }}" required>
+        </div>
+        <div class="col-md-3">
+            <label for="interval" class="form-label">Interval</label>
+            <select class="form-select" id="interval" name="interval" required>
+                <option value="">Choose interval...</option>
+                <option value="day" {% if request.form.get('interval') == 'day' %}selected{% endif %}>Day</option>
+                <option value="minute" {% if request.form.get('interval') == 'minute' %}selected{% endif %}>Minute</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary">Analyze Gaps</button>
+        </div>
+    </div>
+</form>
+
+{% if results %}
+<!-- Rest of your results display code -->
+<div class="results-section mt-4">
+    <h2>Gap Analysis Results</h2>
+    <!-- Your charts and data display -->
+</div>
+{% endif %}
+{% endblock %} 
