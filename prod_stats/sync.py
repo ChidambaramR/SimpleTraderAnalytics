@@ -36,7 +36,8 @@ def sync_data_from_s3():
             manifest['logs'] = {}
         
         # Sync Ledger files
-        bucket = 'simpletrader-working-bucket-ajith'
+        s3_bucket_suffix = os.getenv("S3_BUCKET_SUFFIX", "")
+        bucket = f"simpletrader-working-bucket{s3_bucket_suffix}"
         ledger_prefix = 'SimpleTraderLedger/'
         
         # Handle pagination for ledger files
