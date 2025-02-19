@@ -54,8 +54,8 @@ def get_opening_gaps_trader_stats(from_date, to_date, result_type='ANY'):
     print("Sample dates:", combined_df['date'].head())  # Debug print
     
     # Filter for entry and exit tags
-    entry_tags = ['OGTEN', 'N_O1____', 'N_O2____']
-    exit_tags = ['OGTEX', 'X_O1____', 'X_O2____']
+    entry_tags = ['OGTEN', 'NOO1____', 'NOO2____']
+    exit_tags = ['OGTEX', 'XOO1____', 'XOO2____']
     
     filtered_df = combined_df[
         combined_df['entry_tag'].isin(entry_tags) & 

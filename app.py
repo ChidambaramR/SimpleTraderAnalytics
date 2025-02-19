@@ -9,7 +9,7 @@ from database.gap_queries.queries import (
     analyze_first_minute_rest_of_day_moves
 )
 from backtest.router import run_backtest
-from prod_stats.utils import get_pre_market_ticks_data, prepare_depth_data
+from prod_stats.utils import get_in_market_ticks_data, get_pre_market_ticks_data, prepare_depth_data, get_trade_points, get_stock_logs
 from trader_stats.utils import get_opening_gaps_trader_stats
 from datetime import datetime
 
@@ -201,6 +201,38 @@ def analyze_pre_market_ticks():
                           date=date,
                           symbol=symbol,
                           prepare_depth_data=prepare_depth_data)
+
+@app.route('/analyze/in-market-ticks', methods=['GET', 'POST'])
+def analyze_in_market_ticks():
+    df = None
+    summary = None
+    trades = None
+    logs = []  # Initialize logs list
+    
+    # Get date and symbol from either POST or GET
+    date = request.form.get('date') or request.args.get('date')
+    symbol = request.form.get('symbol') or request.args.get('symbol')
+    
+    # If we have parameters, treat it as a form submission
+    if date and symbol:
+        df, summary = get_in_market_ticks_data(date, symbol)
+        trades = get_trade_points(date, symbol)
+        
+        if df is not None:
+            # Get logs for this stock
+            logs = get_stock_logs(date, symbol)
+            print(f"Found {len(logs)} logs for {symbol}")  # Debug print
+            print("Sample logs:", logs[:2])  # Print first two logs if any
+            
+        return render_template('analyze/in_market_ticks.html', 
+                             date=date, 
+                             symbol=symbol, 
+                             df=df, 
+                             summary=summary,
+                             trades=trades,
+                             logs=logs)
+    
+    return render_template('analyze/in_market_ticks.html', date=date, symbol=symbol)
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -93,7 +93,7 @@ def sync_data_from_s3():
                 filename = os.path.basename(key)
                 
                 # Check if file matches our pattern
-                if filename.startswith('pre_market_ticks_data_') or filename.startswith('pre_market_data_'):
+                if filename.startswith('pre_market_ticks_data_') or filename.startswith('pre_market_data_') or filename.startswith('ticks_data_') or filename == "logs.txt":
                     # Extract date from parent directory
                     date_str = os.path.basename(os.path.dirname(key))
                     if not date_str:
@@ -111,9 +111,13 @@ def sync_data_from_s3():
                     
                     local_dir = os.path.join(current_dir, 'data', year, month, day)
                     
+                    if filename.startswith('pre_market'):
                     # Always save as pre_market_ticks_data_*.txt
-                    stock_name = filename.split('_')[-1].replace('.txt', '')
-                    local_filename = f'pre_market_ticks_data_{stock_name}.txt'
+                        stock_name = filename.split('_')[-1].replace('.txt', '')
+                        local_filename = f'pre_market_ticks_data_{stock_name}.txt'
+                    else:
+                        local_filename = filename
+
                     local_path = os.path.join(local_dir, local_filename)
                     
                     # Check if file needs to be downloaded

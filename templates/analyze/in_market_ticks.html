@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% macro price_cell(price, color_class, rowspan=None) %}
+{% if rowspan %}
+<td rowspan="{{ rowspan }}" class="bg-{{ color_class }}">{{ price }}</td>
+{% else %}
+<td class="bg-{{ color_class }}">{{ price }}</td>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="pre-market-container">
+    <h1>In-Market Ticks Analysis</h1>
+
+    <form method="POST" action="{{ url_for('analyze_in_market_ticks') }}" class="mb-4">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label for="date" class="form-label">Date</label>
+                <input type="date" class="form-control" id="date" name="date" 
+                       value="{{ date or request.form.get('date', '') }}" required>
+            </div>
+            <div class="col-md-4">
+                <label for="symbol" class="form-label">Stock Symbol</label>
+                <input type="text" class="form-control" id="symbol" name="symbol" 
+                       value="{{ symbol or request.form.get('symbol', '') }}" 
+                       placeholder="e.g., BATAINDIA" required>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Analyze</button>
+            </div>
+        </div>
+    </form>
+
+    {% if date and symbol and df is none %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelector('form').submit();
+    });
+    </script>
+    {% endif %}
+
+    {% if df is defined and df is not none %}
+    <div class="results-section mt-4">
+        <h2>Price Movement</h2>
+        <div class="chart-container mb-4" style="position: relative; height:400px; width:100vw; margin-left: calc(-50vw + 50%);">
+            <canvas id="priceChart"></canvas>
+        </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            // Prepare data
+            const rawData = {
+                timestamps: [{% for index, row in df.iterrows() %}'{{ row.ts.strftime("%H:%M:%S") }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+                prices: [{% for index, row in df.iterrows() %}{{ row.last_price }}{% if not loop.last %}, {% endif %}{% endfor %}]
+            };
+
+            // Filter data to start from 9:15
+            const startIndex = rawData.timestamps.findIndex(t => t >= "09:15:00");
+            const data = {
+                timestamps: rawData.timestamps.slice(startIndex),
+                prices: rawData.prices.slice(startIndex)
+            };
+
+            const openPrice = {{ summary.open_price }};
+            const trades = {{ trades|tojson }};
+            
+            // Convert timestamps to full datetime strings for Chart.js time scale
+            const today = '{{ date }}';  // Get the date from the template
+            const priceData = data.timestamps.map((time, i) => ({
+                x: today + 'T' + time,
+                y: data.prices[i]
+            }));
+
+            const tradePoints = {
+                entry: [],
+                exit: []
+            };
+            
+            trades.forEach((trade, index) => {
+                let entryTime = trade.entry_time;
+                
+                // If entry time is before 9:15, use first available time
+                if (entryTime < "09:15:00") {
+                    entryTime = data.timestamps[0];
+                }
+                
+                // Add entry point with full datetime
+                const entryPoint = {
+                    x: today + 'T' + entryTime,
+                    y: parseFloat(trade.entry_price),
+                    entry_type: trade.entry_type
+                };
+                
+                // Add exit point with full datetime
+                const exitPoint = {
+                    x: today + 'T' + trade.exit_time,
+                    y: parseFloat(trade.exit_price),
+                    exit_type: trade.exit_type
+                };
+                
+                tradePoints.entry.push(entryPoint);
+                tradePoints.exit.push(exitPoint);
+            });
+
+            const chartConfig = {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Last Price',
+                            data: priceData,
+                            borderColor: 'rgb(75, 192, 192)',
+                            borderWidth: 1.5,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        },
+                        {
+                            label: 'Open Price',
+                            data: data.timestamps.map(t => ({
+                                x: today + 'T' + t,
+                                y: openPrice
+                            })),
+                            borderColor: 'rgb(255, 99, 132)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        },
+                        {
+                            label: 'Entry Points',
+                            data: tradePoints.entry,
+                            backgroundColor: (context) => {
+                                if (!context || !context.raw) return 'rgb(128, 128, 128)';
+                                return context.raw.entry_type === 'BUY' ? 'rgb(75, 192, 75)' : 'rgb(192, 75, 75)';
+                            },
+                            borderColor: (context) => {
+                                if (!context || !context.raw) return 'rgb(128, 128, 128)';
+                                return context.raw.entry_type === 'BUY' ? 'rgb(75, 192, 75)' : 'rgb(192, 75, 75)';
+                            },
+                            pointRadius: 5,
+                            pointStyle: 'circle',
+                            showLine: false
+                        },
+                        {
+                            label: 'Exit Points',
+                            data: tradePoints.exit,
+                            backgroundColor: (context) => {
+                                if (!context || !context.raw) return 'rgb(128, 128, 128)';
+                                return context.raw.exit_type === 'BUY' ? 'rgb(75, 192, 75)' : 'rgb(192, 75, 75)';
+                            },
+                            borderColor: (context) => {
+                                if (!context || !context.raw) return 'rgb(128, 128, 128)';
+                                return context.raw.exit_type === 'BUY' ? 'rgb(75, 192, 75)' : 'rgb(192, 75, 75)';
+                            },
+                            pointRadius: 5,
+                            pointStyle: 'circle',
+                            showLine: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                filter: function(legendItem, data) {
+                                    return legendItem.text === 'Last Price' || legendItem.text === 'Open Price';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price'
+                            }
+                        }
+                    }
+                }
+            };
+
+            new Chart(ctx, chartConfig);
+        });
+        </script>
+
+        {% if logs %}
+        <div class="mt-4">
+            <h2>Trading Logs (09:15 - 09:17)</h2>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th style="width: 150px;">Time</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            {% set parts = log.split(' ') %}
+                            {% set timestamp = parts[2] %}
+                            {% set message = ' '.join(parts[4:]) %}
+                            <td class="text-nowrap">{{ timestamp }}</td>
+                            <td>{{ message }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 

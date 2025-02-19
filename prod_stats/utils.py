@@ -4,17 +4,7 @@ import pandas as pd
 from datetime import datetime
 import re
 
-def get_pre_market_ticks_data(date, stock):
-    """
-    Reads pre-market ticks data for a given date and stock, and returns it as a formatted DataFrame.
-    
-    Args:
-        date: datetime object or string in format 'YYYY-MM-DD'
-        stock: stock symbol (e.g., 'BATAINDIA')
-        
-    Returns:
-        pandas DataFrame with formatted tick data
-    """
+def get_ticks_data(filename, date, stock):
     try:
         # Convert date to datetime if it's a string
         if isinstance(date, str):
@@ -28,7 +18,7 @@ def get_pre_market_ticks_data(date, stock):
             date.strftime('%Y'),
             date.strftime('%m'),
             date.strftime('%d'),
-            f'pre_market_ticks_data_{stock}.txt'
+            filename
         )
         
         # Read and parse the file
@@ -87,103 +77,142 @@ def get_pre_market_ticks_data(date, stock):
             
         # Create DataFrame
         df = pd.DataFrame(data)
-        
+
         # Create OHLC columns
         df['open'] = df['ohlc'].apply(lambda x: x.get('open'))
         df['high'] = df['ohlc'].apply(lambda x: x.get('high'))
         df['low'] = df['ohlc'].apply(lambda x: x.get('low'))
         df['close'] = df['ohlc'].apply(lambda x: x.get('close'))
-        
-        # Create depth columns
-        for i in range(5):
-            # Buy depth
-            df[f'buy_depth_{i+1}'] = df['depth'].apply(
-                lambda x: x.get('buy')[i] if x.get('buy') and i < len(x.get('buy')) else None
-            )
-            
-            # Sell depth
-            df[f'sell_depth_{i+1}'] = df['depth'].apply(
-                lambda x: x.get('sell')[i] if x.get('sell') and i < len(x.get('sell')) else None
-            )
-        
-        # Create summary data
-        summary = {
-            'last_price': df['last_price'].iloc[0],
-            'last_traded_quantity': df['last_traded_quantity'].iloc[0],
-            'average_traded_price': df['average_traded_price'].iloc[0],
-            'last_trade_time': df['last_trade_time'].iloc[0] if 'last_trade_time' in df.columns else None,
-            'high': df['high'].iloc[0],
-            'low': df['low'].iloc[0],
-            'close': df['close'].iloc[0]
-        }
-        
-        # Keep only necessary columns
-        columns = [
-            'exchange_timestamp',
-            'open',
-            'total_buy_quantity',
-            'total_sell_quantity',
-        ]
-        
-        # Add depth columns
-        depth_columns = (
-            [f'buy_depth_{i+1}' for i in range(5)] + 
-            [f'sell_depth_{i+1}' for i in range(5)]
-        )
-        columns.extend(depth_columns)
-        
-        # Add color coding for open values
-        def get_color_code(current, previous):
-            if current == previous:
-                return ''
-            
-            try:
-                pct_change = ((current - previous) / previous) * 100 if previous != 0 else 0
-                
-                if pct_change < -3:
-                    return 'danger'  # darkest red
-                elif pct_change < -1:
-                    return 'warning'  # medium red
-                elif pct_change < 0:
-                    return 'light-danger'  # light red
-                elif pct_change > 3:
-                    return 'success'  # darkest green
-                elif pct_change > 1:
-                    return 'info'  # medium green
-                else:
-                    return 'light-success'  # light green
-            except:
-                return ''  # Return empty string if calculation fails
-        
-        # Calculate color codes for open values
-        df['open_color'] = ''  # Initialize with empty string
-        for i in range(1, len(df)):
-            df.iloc[i, df.columns.get_loc('open_color')] = get_color_code(
-                df.iloc[i]['open'],
-                df.iloc[i-1]['open']
-            )
-        
-        # Add open_color to columns list
-        columns.append('open_color')
-        
-        # Select columns and sort by time
-        df = df[columns].copy()
-        
-        # Rename exchange_timestamp to ts
-        df = df.rename(columns={'exchange_timestamp': 'ts'})
-        
-        # Sort by timestamp
-        df = df.sort_values('ts')
-        
-        return df, summary
-        
+
+        return df
     except FileNotFoundError:
-        print(f"No pre-market ticks data found for {stock} on {date}")
-        return None, None
+        raise ValueError(f"No pre-market ticks data found for {stock} on {date}")
     except Exception as e:
-        print(f"Error processing pre-market ticks data: {str(e)}")
-        print(f"File path: {file_path}")
-        return None, None
+        raise ValueError(f"Error processing pre-market ticks data for {stock} on {date}. Error is {str(e)}")
+
+def get_in_market_ticks_data(date, stock):
+    """
+    Reads in-market ticks data for a given date and stock.
+    Returns DataFrame with tick data and summary statistics.
+    """
+    df = get_ticks_data(f"ticks_data_{stock}.txt", date, stock)
+    
+    df = df.rename(columns={'exchange_timestamp': 'ts'})
+    df = df.sort_values('ts')
+    
+    # Get open price (from first minute's data)
+    open_price = None
+    first_minute_data = df[df['ts'].dt.strftime('%H:%M') == '09:15']
+    if not first_minute_data.empty:
+        open_price = first_minute_data.iloc[0]['ohlc']['open']
+    
+    # Create summary
+    summary = {
+        'open_price': open_price,
+        'last_price': df['last_price'].iloc[-1],
+        'high': df['high'].iloc[-1],
+        'low': df['low'].iloc[-1],
+        'close': df['close'].iloc[-1],
+        'volume': df['volume_traded'].iloc[-1]
+    }
+    
+    return df, summary
+
+def get_pre_market_ticks_data(date, stock):
+    """
+    Reads pre-market ticks data for a given date and stock, and returns it as a formatted DataFrame.
+    
+    Args:
+        date: datetime object or string in format 'YYYY-MM-DD'
+        stock: stock symbol (e.g., 'BATAINDIA')
+        
+    Returns:
+        pandas DataFrame with formatted tick data
+    """
+    df = get_ticks_data(f"pre_market_ticks_data_{stock}.txt", date, stock)
+    
+    # Create depth columns
+    for i in range(5):
+        # Buy depth
+        df[f'buy_depth_{i+1}'] = df['depth'].apply(
+            lambda x: x.get('buy')[i] if x.get('buy') and i < len(x.get('buy')) else None
+        )
+        
+        # Sell depth
+        df[f'sell_depth_{i+1}'] = df['depth'].apply(
+            lambda x: x.get('sell')[i] if x.get('sell') and i < len(x.get('sell')) else None
+        )
+    
+    # Create summary data
+    summary = {
+        'last_price': df['last_price'].iloc[0],
+        'last_traded_quantity': df['last_traded_quantity'].iloc[0],
+        'average_traded_price': df['average_traded_price'].iloc[0],
+        'last_trade_time': df['last_trade_time'].iloc[0] if 'last_trade_time' in df.columns else None,
+        'high': df['high'].iloc[0],
+        'low': df['low'].iloc[0],
+        'close': df['close'].iloc[0]
+    }
+    
+    # Keep only necessary columns
+    columns = [
+        'exchange_timestamp',
+        'open',
+        'total_buy_quantity',
+        'total_sell_quantity',
+    ]
+    
+    # Add depth columns
+    depth_columns = (
+        [f'buy_depth_{i+1}' for i in range(5)] + 
+        [f'sell_depth_{i+1}' for i in range(5)]
+    )
+    columns.extend(depth_columns)
+    
+    # Add color coding for open values
+    def get_color_code(current, previous):
+        if current == previous:
+            return ''
+        
+        try:
+            pct_change = ((current - previous) / previous) * 100 if previous != 0 else 0
+            
+            if pct_change < -3:
+                return 'danger'  # darkest red
+            elif pct_change < -1:
+                return 'warning'  # medium red
+            elif pct_change < 0:
+                return 'light-danger'  # light red
+            elif pct_change > 3:
+                return 'success'  # darkest green
+            elif pct_change > 1:
+                return 'info'  # medium green
+            else:
+                return 'light-success'  # light green
+        except:
+            return ''  # Return empty string if calculation fails
+    
+    # Calculate color codes for open values
+    df['open_color'] = ''  # Initialize with empty string
+    for i in range(1, len(df)):
+        df.iloc[i, df.columns.get_loc('open_color')] = get_color_code(
+            df.iloc[i]['open'],
+            df.iloc[i-1]['open']
+        )
+    
+    # Add open_color to columns list
+    columns.append('open_color')
+    
+    # Select columns and sort by time
+    df = df[columns].copy()
+    
+    # Rename exchange_timestamp to ts
+    df = df.rename(columns={'exchange_timestamp': 'ts'})
+    
+    # Sort by timestamp
+    df = df.sort_values('ts')
+    
+    return df, summary
 
 def prepare_depth_data(row):
     """
@@ -266,3 +295,123 @@ def prepare_depth_data(row):
         depth_df['cumulative_sell_quantity'] = 0
     
     return depth_df
+
+def get_trade_points(date, stock):
+    """
+    Gets trade entry and exit points from ledger for a specific date and stock.
+    Returns entry and exit points with their prices.
+    Only includes trades with NOO1 entry tag.
+    """
+    try:
+        # Convert date to datetime if it's a string
+        if isinstance(date, str):
+            date = datetime.strptime(date, '%Y-%m-%d')
+            
+        # Construct ledger file path
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(
+            current_dir, 
+            'data',
+            date.strftime('%Y'),
+            date.strftime('%m'),
+            date.strftime('%d'),
+            'ledger.csv'
+        )
+        
+        if not os.path.exists(file_path):
+            print(f"Ledger file not found at: {file_path}")
+            return []
+            
+        # Read ledger
+        df = pd.read_csv(file_path)
+        
+        # Filter for this stock and NOO1 tag
+        df = df[
+            (df['symbol'] == stock) & 
+            (df['entry_tag'].str.startswith('NOO1', na=False))  # Filter for NOO1 trades
+        ]
+        
+        if len(df) == 0:
+            print(f"No NOO1 trades found for {stock}")
+            return []
+            
+        # Convert time columns to datetime
+        df['entry_time'] = pd.to_datetime(df['entry_time'])
+        df['exit_time'] = pd.to_datetime(df['exit_time'])
+        
+        trades = []
+        for _, row in df.iterrows():
+            try:
+                trade = {
+                    'entry_time': row['entry_time'].strftime('%H:%M:%S'),
+                    'exit_time': row['exit_time'].strftime('%H:%M:%S'),
+                    'entry_price': row['entry_price'],
+                    'exit_price': row['exit_price'],
+                    'entry_time_full': row['entry_time'].strftime('%H:%M:%S.%f'),
+                    'exit_time_full': row['exit_time'].strftime('%H:%M:%S.%f'),
+                    'entry_type': row['entry_type'],
+                    'exit_type': row['exit_type']
+                }
+                trades.append(trade)
+            except Exception as row_error:
+                print(f"Error processing row: {row}")
+                print(f"Row error: {str(row_error)}")
+                continue
+            
+        return trades
+    except Exception as e:
+        print(f"Error in get_trade_points: {str(e)}")
+        return []
+
+def get_stock_logs(date, stock, start_time="09:15:00", end_time="09:17:00"):
+    """
+    Gets logs for a specific stock between start_time and end_time.
+    Returns list of log entries in chronological order.
+    """
+    try:
+        # Convert date to datetime if it's a string
+        if isinstance(date, str):
+            date = datetime.strptime(date, '%Y-%m-%d')
+            
+        # Construct logs file path
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(
+            current_dir, 
+            'data',
+            date.strftime('%Y'),
+            date.strftime('%m'),
+            date.strftime('%d'),
+            'logs.txt'
+        )
+        
+        print(f"Looking for logs at: {file_path}")  # Debug print
+        
+        if not os.path.exists(file_path):
+            print(f"Logs file not found at: {file_path}")
+            return []
+            
+        logs = []
+        with open(file_path, 'r') as f:
+            for line in f:
+                if stock in line:
+                    # Extract timestamp from log line
+                    try:
+                        # Split on first space to get timestamp part
+                        parts = line.split(' ')
+                        timestamp_str = parts[2]
+                        time_str = timestamp_str.split(',')[0]
+                        
+                        # Check if time is within our range
+                        if start_time <= time_str <= end_time:
+                            logs.append(line.strip())
+                            print(f"Added log: {line.strip()}")  # Debug print
+                    except Exception as e:
+                        print(f"Error processing log line: {line.strip()}")
+                        print(f"Error: {str(e)}")
+                        continue
+                        
+        print(f"Found {len(logs)} logs for {stock}")  # Debug print
+        return logs
+    except Exception as e:
+        print(f"Error in get_stock_logs: {str(e)}")
+        return []
