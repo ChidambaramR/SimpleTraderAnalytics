@@ -146,6 +146,6 @@ def sync_data_from_s3():
         logger.error(f"Error syncing data from S3: {str(e)}")
         return False
 
-# sync_data_from_s3()
-
-# rebuild_db_from_files()
+if __name__ == '__main__':
+    sync_data_from_s3()
+    rebuild_db_from_files()
