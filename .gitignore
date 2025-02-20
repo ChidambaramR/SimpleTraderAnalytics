@@ -13,6 +13,7 @@ __pycache__/
 # Dont publish db files
 database/ohlc_data/*.db
 prod_stats/data/*
+prod_stats/manifest.json
 keys.json
 
 # Distribution / packaging

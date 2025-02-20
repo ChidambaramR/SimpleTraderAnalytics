@@ -20,14 +20,9 @@ def sync_data_from_s3():
         # Load AWS credentials
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
-        with open('keys.json', 'r') as f:
-            keys = json.load(f)
-            
         # Initialize S3 client
         s3_client = boto3.client(
-            's3',
-            aws_access_key_id=keys['aws_root_user_access_key'],
-            aws_secret_access_key=keys['aws_root_user_secret_key']
+            's3'
         )
         
         # Load manifest
@@ -44,7 +39,8 @@ def sync_data_from_s3():
             manifest['logs'] = {}
         
         # Sync Ledger files
-        bucket = 'simpletrader-working-bucket'
+        s3_bucket_suffix = os.getenv("S3_BUCKET_SUFFIX", "")
+        bucket = f"simpletrader-working-bucket{s3_bucket_suffix}"
         ledger_prefix = 'SimpleTraderLedger/'
         
         # Handle pagination for ledger files
@@ -152,4 +148,4 @@ def sync_data_from_s3():
 
 # sync_data_from_s3()
 
-rebuild_db_from_files()
+# rebuild_db_from_files()
