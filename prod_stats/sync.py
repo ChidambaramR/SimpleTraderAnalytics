@@ -3,11 +3,14 @@ import json
 import os
 from datetime import datetime
 import logging
+import pandas as pd
+
+from database import store_ticks_data, rebuild_db_from_files, store_ledger_data
+from utils import get_ticks_data
 
 def sync_data_from_s3():
     """
-    Syncs data from S3 buckets based on manifest comparison.
-    Downloads new/modified files and maintains directory structure.
+    Syncs data from S3 buckets and stores in local SQLite database.
     """
     try:
         # Setup logging
@@ -76,6 +79,10 @@ def sync_data_from_s3():
                         os.makedirs(local_dir, exist_ok=True)
                         s3_client.download_file(bucket, key, local_path)
                         manifest['ledger'][key] = etag
+                        
+                        # After reading ledger file:
+                        df = pd.read_csv(local_path)
+                        store_ledger_data(df, date_str)
         
         # Sync Logs files
         logs_prefix = 'SimpleTraderLogs/'
@@ -127,6 +134,10 @@ def sync_data_from_s3():
                         os.makedirs(local_dir, exist_ok=True)
                         s3_client.download_file(bucket, key, local_path)
                         manifest['logs'][key] = etag
+                        
+                        # After reading ticks data:
+                        df = get_ticks_data(local_filename, date_obj, stock_name)
+                        store_ticks_data(df, stock_name)
         
         # Save updated manifest
         with open(manifest_path, 'w') as f:
@@ -140,3 +151,5 @@ def sync_data_from_s3():
         return False
 
 # sync_data_from_s3()
+
+rebuild_db_from_files()

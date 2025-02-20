@@ -169,10 +169,11 @@ def opening_gaps_trader_stats():
             to_date = datetime.strptime(to_date, '%Y-%m-%d')
             
             # Get stats data
-            df = get_opening_gaps_trader_stats(from_date, to_date, result_type)
+            df, stats = get_opening_gaps_trader_stats(from_date, to_date, result_type)
             
             return render_template('trader_stats/opening_gaps_trader.html', 
                                  df=df,
+                                 stats=stats,
                                  from_date=from_date.strftime('%Y-%m-%d'),
                                  to_date=to_date.strftime('%Y-%m-%d'),
                                  result_type=result_type)

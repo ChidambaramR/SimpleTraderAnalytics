@@ -4288,7 +4288,6 @@
     "SimpleTraderLogs/2025-02-18/pre_market_ticks_data_ABB.txt": "aa512b6529b13d0d8a136028e6f2b1ae",
     "SimpleTraderLogs/2025-02-18/pre_market_ticks_data_MAXHEALTH.txt": "8c345f5e73a315f6c54f60c191994b4a",
     "SimpleTraderLogs/2025-02-18/pre_market_ticks_data_USHAMART.txt": "98f8c4785b915c5bcc0884ee69738097",
-    "SimpleTraderLogs/2025-02-17/ticks_data_ANANTRAJ.txt": "a5a1a136d3e01662f13579bfe14b8a20",
     "SimpleTraderLogs/2025-02-17/ticks_data_FACT.txt": "ba7fe036ad79b2b9ba86ded83a0051fe",
     "SimpleTraderLogs/2025-02-17/ticks_data_KFINTECH.txt": "e5a1280024709f0e7079b13dc76502c6",
     "SimpleTraderLogs/2025-02-17/ticks_data_RVNL.txt": "f06e7539c4156ee74dcd21bd5255e5e3",
@@ -4351,6 +4350,7 @@
     "SimpleTraderLogs/2025-02-19/ticks_data_DRREDDY.txt": "bac97ecc02c8061a7fbfa4198585a842",
     "SimpleTraderLogs/2025-02-19/ticks_data_ITI-BE.txt": "afa74efe17320f3da7fe15ecad0999a3",
     "SimpleTraderLogs/2025-02-19/ticks_data_LUPIN.txt": "7aa1a921c9b1b2639a59090881d7bb67",
-    "SimpleTraderLogs/2025-02-19/ticks_data_PPLPHARMA.txt": "9e7c832253c25ce35ab4162307a43b1a"
+    "SimpleTraderLogs/2025-02-19/ticks_data_PPLPHARMA.txt": "9e7c832253c25ce35ab4162307a43b1a",
+    "SimpleTraderLogs/2025-02-17/ticks_data_ANANTRAJ.txt": "a5a1a136d3e01662f13579bfe14b8a20"
   }
 }

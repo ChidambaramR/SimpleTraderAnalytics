@@ -34,6 +34,52 @@
     <div class="alert alert-danger">{{ error }}</div>
     {% endif %}
 
+    {% if stats is defined and stats is not none %}
+    <div class="results-section mt-4 mb-4">
+        <h2>Overall Statistics</h2>
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Date Range</td>
+                        <td>{{ stats.date_range }}</td>
+                    </tr>
+                    <tr>
+                        <td>Overall PNL</td>
+                        <td>₹{{ stats.overall_pnl|indian_currency }}</td>
+                    </tr>
+                    <tr>
+                        <td>Leg 1 PNL (NOO1/OGTEN)</td>
+                        <td>₹{{ stats.leg1_pnl|indian_currency }}</td>
+                    </tr>
+                    <tr>
+                        <td>Leg 2 PNL (NOO2)</td>
+                        <td>₹{{ stats.leg2_pnl|indian_currency }}</td>
+                    </tr>
+                    <tr>
+                        <td>Overall Win-Loss Ratio</td>
+                        <td>{{ "%.2f"|format(stats.overall_win_ratio) }}%</td>
+                    </tr>
+                    <tr>
+                        <td>Leg 1 Win-Loss Ratio</td>
+                        <td>{{ "%.2f"|format(stats.leg1_win_ratio) }}%</td>
+                    </tr>
+                    <tr>
+                        <td>Leg 2 Win-Loss Ratio</td>
+                        <td>{{ "%.2f"|format(stats.leg2_win_ratio) }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
     {% if df is defined and df is not none %}
     <div class="results-section mt-4">
         <div class="table-responsive">

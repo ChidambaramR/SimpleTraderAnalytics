@@ -1,5 +1,4 @@
 import os
-import json
 import pandas as pd
 from datetime import datetime
 import re
@@ -30,10 +29,11 @@ def get_ticks_data(filename, date, stock):
                     if not line:  # Skip empty lines
                         continue
                         
-                    # Replace datetime strings with ISO format strings
+                    # Handle datetime.datetime format with and without seconds
+                    datetime_pattern = r'datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+))?\)'
                     line = re.sub(
-                        r'datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)',
-                        lambda m: f'"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}T{int(m.group(4)):02d}:{int(m.group(5)):02d}:{int(m.group(6)):02d}"',
+                        datetime_pattern,
+                        lambda m: f'"{int(m.group(1))}-{int(m.group(2)):02d}-{int(m.group(3)):02d} {int(m.group(4)):02d}:{int(m.group(5)):02d}:{int(m.group(6)) if m.group(6) else 0:02d}"',
                         line
                     )
                     
@@ -45,14 +45,16 @@ def get_ticks_data(filename, date, stock):
                     )
                     
                     # Parse the line and get first element of tuple
-                    line_dict = eval(line)[0]  # Get first element since it's a single-element tuple
+                    line_dict = eval(line)[0]
                     
-                    # Convert datetime strings back to datetime objects
-                    if 'last_trade_time' in line_dict:
-                        line_dict['last_trade_time'] = datetime.fromisoformat(line_dict['last_trade_time'])
+                    # Convert datetime strings to datetime objects
                     if 'exchange_timestamp' in line_dict:
-                        line_dict['exchange_timestamp'] = datetime.fromisoformat(line_dict['exchange_timestamp'])
-                        
+                        if isinstance(line_dict['exchange_timestamp'], str):
+                            line_dict['exchange_timestamp'] = datetime.strptime(
+                                line_dict['exchange_timestamp'], 
+                                '%Y-%m-%d %H:%M:%S'
+                            )
+                    
                     data.append(line_dict)
                     
                 except Exception as e:
