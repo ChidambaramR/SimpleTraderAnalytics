@@ -136,6 +136,30 @@ def gaps_first_minute_with_sl_tp():
     
     return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html')
 
+@app.route('/strategies/gaps/trading_gaps_leg2/leg2_sl_tp')
+def gaps_leg2_sl_tp():
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    force_run = request.args.get('force_run', 'false').lower() == 'true'
+    
+    if from_date and to_date:
+        args = {
+            'stop_loss_pct': float(request.args.get('stop_loss', 0.75)),
+            'take_profit_pct': float(request.args.get('take_profit', 2)),
+            'entry_time': request.args.get('entry_time', '09:17')
+        }
+
+        results = run_backtest('gaps_trading_sl_tp_leg2', 
+                             from_date, 
+                             to_date, 
+                             force_run=force_run,
+                             args=args)
+        return render_template('strategies/gaps/trading_gaps_leg2/leg2_sl_tp.html', 
+                             results=results)
+    
+    return render_template('strategies/gaps/trading_gaps_leg2/leg2_sl_tp.html')
+
+
 @app.route('/analyze/gaps/first-minute', methods=['GET', 'POST'])
 def analyze_gaps_first_minute():
     results = None
