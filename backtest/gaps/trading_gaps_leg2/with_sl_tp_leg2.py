@@ -68,9 +68,8 @@ class Leg2GapTrader(DayTrader):
 
         entry_price = minute_data.iloc[minutes_to_enter]['open']
 
-        # Calculate position size - use leverage 5
-        leverage = 5
-        quantity = floor(leverage * available_capital / entry_price)
+        # Calculate position size
+        quantity = floor(available_capital / entry_price)
         if quantity == 0:
             return []
         
