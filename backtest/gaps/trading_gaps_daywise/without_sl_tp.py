@@ -3,7 +3,7 @@ from database.utils.db_utils import get_db_and_tables
 from ...utils.runner import run_backtest_with_cache
 from collections import defaultdict
 
-def _run_backtest(from_date, to_date):
+def _run_backtest(from_date, to_date, args={}):
     """
     Internal function that implements the actual backtest logic.
     Processes data day by day to simulate real trading conditions.
@@ -149,7 +149,7 @@ def _run_backtest(from_date, to_date):
             'roi_5x': 0
         }
 
-def run_backtest(from_date, to_date, force_run=False):
+def run_backtest(from_date, to_date, force_run=False, args={}):
     """
     Public interface for running the backtest with caching support.
     """

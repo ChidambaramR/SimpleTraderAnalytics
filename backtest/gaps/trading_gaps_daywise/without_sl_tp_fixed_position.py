@@ -93,7 +93,7 @@ class GapTraderFixedPosition(DayTrader):
         
         return [trade]
 
-def _run_backtest(from_date, to_date):
+def _run_backtest(from_date, to_date, args={}):
     """Run backtest for both investment amounts."""
     try:
         # Run for 1L
@@ -142,7 +142,7 @@ def _run_backtest(from_date, to_date):
     except Exception as e:
         return {'error': f"Error in backtest: {str(e)}"}
 
-def run_backtest_fixed_position(from_date, to_date, force_run=False):
+def run_backtest_fixed_position(from_date, to_date, force_run=False, args={}):
     """Public interface for running the backtest with caching support."""
     strategy_name = 'gaps_trading_daywise_without_sl_tp_fixed_position'
     return run_backtest_with_cache(
