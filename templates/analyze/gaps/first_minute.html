@@ -28,10 +28,122 @@
 </form>
 
 {% if results %}
-<!-- Rest of your results display code -->
 <div class="results-section mt-4">
     <h2>Nth Minute Move Analysis</h2>
-    <!-- Your analysis results display -->
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Metric</th>
+                    <th>Statistics</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set total_gaps = results.details.gap_up.total + results.details.gap_down.total %}
+                {% set total_favorable = results.details.gap_up.moved_down + results.details.gap_down.moved_up %}
+                <tr>
+                    <td>Total Gaps</td>
+                    <td>{{ total_gaps }} 
+                        {% if results.total_instances > 0 %}
+                        ({{ (total_gaps / results.total_instances * 100)|round(2) }}% of total instances)
+                        {% else %}
+                        (0% of total instances)
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gaps Moved in Our Favor</td>
+                    <td>{{ total_favorable }} 
+                        {% if total_gaps > 0 %}
+                        ({{ (total_favorable / total_gaps * 100)|round(2) }}% of total gaps)
+                        {% else %}
+                        (0% of total gaps)
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gap Up & Nth Minute Down</td>
+                    <td>
+                        <div>{{ results.details.gap_up.moved_down }} out of {{ results.details.gap_up.total }} gap ups 
+                            {% if results.details.gap_up.total > 0 %}
+                            ({{ (results.details.gap_up.moved_down / results.details.gap_up.total * 100)|round(2) }}%)
+                            {% else %}
+                            (0%)
+                            {% endif %}
+                        </div>
+                        <div>Average move: {{ results.details.gap_up.avg_move }}</div>
+                        <div>Standard deviation: {{ results.details.gap_up.std_move }}</div>
+                        <div>90th percentile: {{ results.details.gap_up.p90_move }}</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gap Down & Nth Minute Up</td>
+                    <td>
+                        <div>{{ results.details.gap_down.moved_up }} out of {{ results.details.gap_down.total }} gap downs 
+                            {% if results.details.gap_down.total > 0 %}
+                            ({{ (results.details.gap_down.moved_up / results.details.gap_down.total * 100)|round(2) }}%)
+                            {% else %}
+                            (0%)
+                            {% endif %}
+                        </div>
+                        <div>Average move: {{ results.details.gap_down.avg_move }}</div>
+                        <div>Standard deviation: {{ results.details.gap_down.std_move }}</div>
+                        <div>90th percentile: {{ results.details.gap_down.p90_move }}</div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if results.rest_of_day %}
+<div class="results-section mt-4">
+    <h2>Rest of Day Analysis (After 09:16)</h2>
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Scenario</th>
+                    <th>Statistics</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Gap Up & First Minute Up</td>
+                    <td>
+                        {{ results.rest_of_day.gap_up_first_up.crossed_down }} out of 
+                        {{ results.rest_of_day.gap_up_first_up.total }} instances crossed below open 
+                        ({{ results.rest_of_day.gap_up_first_up.crossed_percent|round(2) }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gap Up & First Minute Down</td>
+                    <td>
+                        {{ results.rest_of_day.gap_up_first_down.crossed_up }} out of 
+                        {{ results.rest_of_day.gap_up_first_down.total }} instances crossed above open 
+                        ({{ results.rest_of_day.gap_up_first_down.crossed_percent|round(2) }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gap Down & First Minute Up</td>
+                    <td>
+                        {{ results.rest_of_day.gap_down_first_up.crossed_down }} out of 
+                        {{ results.rest_of_day.gap_down_first_up.total }} instances crossed below open 
+                        ({{ results.rest_of_day.gap_down_first_up.crossed_percent|round(2) }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <td>Gap Down & First Minute Down</td>
+                    <td>
+                        {{ results.rest_of_day.gap_down_first_down.crossed_up }} out of 
+                        {{ results.rest_of_day.gap_down_first_down.total }} instances crossed above open 
+                        ({{ results.rest_of_day.gap_down_first_down.crossed_percent|round(2) }}%)
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endif %}
 {% endblock %} 
