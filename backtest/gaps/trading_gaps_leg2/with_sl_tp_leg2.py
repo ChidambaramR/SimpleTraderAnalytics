@@ -92,8 +92,8 @@ class Leg2GapTrader(DayTrader):
         # Gap Up - Short
         if gap['gap_percent'] > 0 \
             and first_min_close > first_min_open and recent_min_close > first_min_open and pct_diff > threshold_pct:
-            stop_loss_price = gap['open'] * (1 + self.stop_loss_pct/100)
-            take_profit_price = gap['open'] * (1 - self.take_profit_pct/100)
+            stop_loss_price = entry_price * (1 + self.stop_loss_pct/100)
+            take_profit_price = entry_price * (1 - self.take_profit_pct/100)
 
             # Loop through minutes until exit time
             for i in range(minutes_to_enter, minutes_to_exit):
@@ -118,8 +118,8 @@ class Leg2GapTrader(DayTrader):
         elif gap['gap_percent'] > 0 \
             and first_min_close < first_min_open and recent_min_close < first_min_open and pct_diff > threshold_pct:
 
-            stop_loss_price = gap['open'] * (1 - self.stop_loss_pct/100)
-            take_profit_price = gap['open'] * (1 + self.take_profit_pct/100)
+            stop_loss_price = entry_price * (1 - self.stop_loss_pct/100)
+            take_profit_price = entry_price * (1 + self.take_profit_pct/100)
             
             # Loop through minutes until exit time
             for i in range(minutes_to_enter, minutes_to_exit):
