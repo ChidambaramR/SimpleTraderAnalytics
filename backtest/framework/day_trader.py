@@ -8,6 +8,7 @@ class DayTrader(ABC):
     def __init__(self, initial_capital=100000):
         self.initial_capital = initial_capital
         self.current_equity = initial_capital
+        self.capital_added = 0
         self.peak_equity = initial_capital
         self.max_drawdown = 0
         self.trades = []
@@ -184,6 +185,11 @@ class DayTrader(ABC):
                 self.peak_equity = max(self.peak_equity, self.current_equity)
                 current_drawdown = self.peak_equity - self.current_equity
                 self.max_drawdown = max(self.max_drawdown, current_drawdown)
+
+                if self.current_equity < self.initial_capital:
+                    diff = self.initial_capital - self.current_equity
+                    self.capital_added += diff
+                    self.current_equity = self.initial_capital
             
             return self.get_results()
             
@@ -197,13 +203,19 @@ class DayTrader(ABC):
             
         trades_df = pd.DataFrame(self.trades)
         win_ratio = (self.wins / self.total_trades * 100) if self.total_trades > 0 else 0
-        total_pnl = self.current_equity - self.initial_capital
+        total_pnl = self.current_equity - self.initial_capital - self.capital_added
         roi = (total_pnl / self.initial_capital * 100)
         
         # Calculate trade statistics
         profitable_trades = trades_df[trades_df['PNL'] > 0]
         loss_trades = trades_df[trades_df['PNL'] <= 0]
-        
+
+        # Find exit reason split
+        exit_reason_sl_count = len(trades_df[trades_df['Exit reason'] == 'Stop Loss'])
+        exit_reason_tp_count = len(trades_df[trades_df['Exit reason'] == 'Take Profit'])
+        exit_reason_eod_profit_count = len(trades_df[trades_df['Exit reason'] == 'Time Exit With Profit'])
+        exit_reason_eod_loss_count = len(trades_df[trades_df['Exit reason'] == 'Time Exit With Loss'])
+
         avg_profit = profitable_trades['PNL'].mean() if len(profitable_trades) > 0 else 0
         avg_loss = loss_trades['PNL'].mean() if len(loss_trades) > 0 else 0
         
@@ -228,6 +240,8 @@ class DayTrader(ABC):
             'total_trades': self.total_trades,
             'win_ratio': round(win_ratio, 2),
             'initial_capital': round(self.initial_capital, 2),
+            'capital_added': self.capital_added,
+            'exit_reason_pct': f'SL: {round(100 * exit_reason_sl_count / len(trades_df), 2)}%, TP: {round(100 * exit_reason_tp_count / len(trades_df), 2)}%, EOD Profit: {round(100 * exit_reason_eod_profit_count / len(trades_df), 2)}%, EOD Loss: {round(100 * exit_reason_eod_loss_count / len(trades_df), 2)}%',
             'final_equity': round(self.current_equity, 2),
             'profit': round(total_pnl, 2),
             'max_drawdown': round(self.max_drawdown, 2),
@@ -248,6 +262,7 @@ class DayTrader(ABC):
             'total_trades': 0,
             'win_ratio': 0,
             'initial_capital': self.initial_capital,
+            'capital_added': self.capital_added,
             'final_equity': self.initial_capital,
             'profit': 0,
             'max_drawdown': 0,

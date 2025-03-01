@@ -76,7 +76,7 @@ class Leg2GapTrader(DayTrader):
         first_min_open = minute_data.iloc[0]['open']
         first_min_close = minute_data.iloc[0]['close']
         recent_min_close = minute_data.iloc[minutes_to_enter - 1]['close']
-        pct_diff = abs((recent_min_close - first_min_open) / first_min_open) * 100 # abs() is enough as there are other checks which take care of gap up/gap down
+        abs_pct_diff = abs((recent_min_close - first_min_open) / first_min_open) * 100 # abs() is enough as there are other checks which take care of gap up/gap down
         threshold_pct = 1 # Hardcode
 
         # Initialize trade
@@ -88,12 +88,17 @@ class Leg2GapTrader(DayTrader):
             'Gap %': gap['gap_percent']
         }
 
+        sl_slippage_pct = 0.5
+        tp_slippage_pct = 0.25
+
         # Set stop loss and take profit prices based on position type
         # Gap Up - Short
         if gap['gap_percent'] > 0 \
-            and first_min_close > first_min_open and recent_min_close > first_min_open and pct_diff > threshold_pct:
+            and first_min_close > first_min_open and recent_min_close > first_min_open and abs_pct_diff > threshold_pct:
             stop_loss_price = entry_price * (1 + self.stop_loss_pct/100)
+            sl_exit_price = entry_price * (1 + (self.stop_loss_pct + sl_slippage_pct)/100)
             take_profit_price = entry_price * (1 - self.take_profit_pct/100)
+            tp_exit_price = entry_price * (1 - (self.take_profit_pct - tp_slippage_pct)/100)
 
             # Loop through minutes until exit time
             for i in range(minutes_to_enter, minutes_to_exit):
@@ -101,43 +106,51 @@ class Leg2GapTrader(DayTrader):
                 
                 # Check for stop loss
                 if float(current_minute['high']) >= stop_loss_price:
-                    trade['Exit price'] = stop_loss_price
+                    trade['Exit price'] = sl_exit_price
+                    trade['Exit reason'] = 'Stop Loss'
                     break
                     
                 # Check for take profit
                 elif float(current_minute['low']) <= take_profit_price:
-                    trade['Exit price'] = take_profit_price
+                    trade['Exit price'] = tp_exit_price
+                    trade['Exit reason'] = 'Take Profit'
                     break
                     
                 # If this is the exit minute
                 elif i == minutes_to_exit - 1:
                     trade['Exit price'] = float(current_minute['close'])
+                    trade['Exit reason'] = 'Time Exit With Profit' if current_minute['close'] < entry_price else 'Time Exit With Loss'
                     break
 
         # Gap Down - Long
-        elif gap['gap_percent'] > 0 \
-            and first_min_close < first_min_open and recent_min_close < first_min_open and pct_diff > threshold_pct:
+        elif gap['gap_percent'] < 0 \
+            and first_min_close < first_min_open and recent_min_close < first_min_open and abs_pct_diff > threshold_pct:
 
             stop_loss_price = entry_price * (1 - self.stop_loss_pct/100)
+            sl_exit_price = entry_price * (1 - (self.stop_loss_pct + sl_slippage_pct)/100)
             take_profit_price = entry_price * (1 + self.take_profit_pct/100)
-            
+            tp_exit_price = entry_price * (1 + (self.take_profit_pct - tp_slippage_pct)/100)
+
             # Loop through minutes until exit time
             for i in range(minutes_to_enter, minutes_to_exit):
                 current_minute = minute_data.iloc[i]
                 
                 # Check for stop loss
                 if float(current_minute['low']) <= stop_loss_price:
-                    trade['Exit price'] = stop_loss_price
+                    trade['Exit price'] = sl_exit_price
+                    trade['Exit reason'] = 'Stop Loss'
                     break
                     
                 # Check for take profit
                 elif float(current_minute['high']) >= take_profit_price:
-                    trade['Exit price'] = take_profit_price
+                    trade['Exit price'] = tp_exit_price
+                    trade['Exit reason'] = 'Take Profit'
                     break
                     
                 # If this is the exit minute
                 elif i == minutes_to_exit - 1:
                     trade['Exit price'] = float(current_minute['close'])
+                    trade['Exit reason'] = 'Time Exit With Profit' if current_minute['close'] > entry_price else 'Time Exit With Loss'
                     break
         
         # If no exit condition was met (not enough minute data)
@@ -182,6 +195,10 @@ def _run_backtest(from_date, to_date, args={}):
             'win_ratio': results_1L['win_ratio'],
             'initial_capital_1L': results_1L['initial_capital'],
             'initial_capital_10L': results_10L['initial_capital'],
+            'capital_added_1L': results_1L['capital_added'],
+            'capital_added_10L': results_10L['capital_added'],
+            'exit_reason_1L': results_1L['exit_reason_pct'],
+            'exit_reason_10L': results_10L['exit_reason_pct'],
             'final_equity_1L': results_1L['final_equity'],
             'final_equity_10L': results_10L['final_equity'],
             'profit_1L': results_1L['profit'],

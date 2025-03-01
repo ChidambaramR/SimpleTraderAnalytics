@@ -87,6 +87,16 @@
                     <td>₹{{ results.initial_capital_10L|indian_currency }}</td>
                 </tr>
                 <tr>
+                    <td>Capital Added</td>
+                    <td>₹{{ results.capital_added_1L|indian_currency }}</td>
+                    <td>₹{{ results.capital_added_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Exit Reason Split Percentage</td>
+                    <td>{{ results.exit_reason_1L }}</td>
+                    <td>{{ results.exit_reason_10L }}</td>
+                </tr>
+                <tr>
                     <td>Final Equity</td>
                     <td>₹{{ results.final_equity_1L|indian_currency }}</td>
                     <td>₹{{ results.final_equity_10L|indian_currency }}</td>
