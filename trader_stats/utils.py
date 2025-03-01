@@ -2,10 +2,13 @@ import os
 import pandas as pd
 import sqlite3
 from datetime import datetime, timedelta
+from utils.ohlc_data_utils import get_stitched_ohlc_data
+from utils.ohlc_image_utils import create_ohlc_chart
 
 def get_opening_gaps_trader_stats(from_date=None, to_date=None, result_type='ANY'):
     """
     Read and process trading stats from SQLite database.
+    Also generates OHLC charts for each trade and saves them in appropriate folders.
     
     Args:
         from_date: datetime object for start date (optional)
@@ -99,6 +102,49 @@ def get_opening_gaps_trader_stats(from_date=None, to_date=None, result_type='ANY
         filtered_df = filtered_df.sort_values('date')
         cols = ['date'] + [col for col in filtered_df.columns if col != 'date']
         filtered_df = filtered_df[cols]
+        
+        # Generate OHLC charts for each trade
+        base_dir = os.path.join('prod_stats', 'data', 'images')
+        profit_dir = os.path.join(base_dir, 'profit')
+        loss_dir = os.path.join(base_dir, 'loss')
+        
+        os.makedirs(profit_dir, exist_ok=True)
+        os.makedirs(loss_dir, exist_ok=True)
+        
+        # Process each trade
+        for _, row in filtered_df.iterrows():
+            try:
+                date = row['date']
+                symbol = row['symbol']
+                is_profit = row['net_pnl'] > 0
+                
+                # Get OHLC data
+                ohlc_df = get_stitched_ohlc_data(date, symbol)
+                
+                if ohlc_df is not None and not ohlc_df.empty:
+                    # Prepare data for plotting
+                    plot_df = ohlc_df.copy()
+                    plot_df.set_index('ts', inplace=True)
+                    
+                    # Rename columns to match mplfinance requirements
+                    plot_df.columns = [col.capitalize() for col in plot_df.columns]
+                    
+                    # Generate filename with date
+                    filename = f"{symbol}_{date}.png"
+                    
+                    # Create and save chart directly in profit or loss directory
+                    target_dir = profit_dir if is_profit else loss_dir
+                    
+                    create_ohlc_chart(
+                        plot_df,
+                        target_dir,
+                        filename
+                    )
+                    print(f"Generated chart for {symbol} on {date}")
+                    
+            except Exception as e:
+                print(f"Error processing chart for {symbol} on {date}: {str(e)}")
+                continue
         
         return filtered_df, stats
         

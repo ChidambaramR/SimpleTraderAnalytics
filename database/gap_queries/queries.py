@@ -394,7 +394,8 @@ def analyze_daily_gap_range_success_rates(from_date, to_date):
 def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
     """
     Analyzes moves for gapped stocks at a specific time.
-    Returns statistics about gap ups that moved down and gap downs that moved up.
+    Returns statistics about all gap movements (up/down) and their subsequent moves.
+    Filters for decisive candle patterns (pure bullish/bearish).
     
     Args:
         from_date: Start date for analysis
@@ -411,142 +412,239 @@ def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
         # Calculate which minute we're analyzing
         market_open = datetime.strptime('09:15', '%H:%M').time()
         analysis_time_obj = datetime.strptime(analysis_time, '%H:%M').time()
-        minute_number = (
-            (analysis_time_obj.hour - market_open.hour) * 60 + 
-            (analysis_time_obj.minute - market_open.minute)
-        ) + 1  # Convert to 1-based index
         
-        print(f"Analyzing minute number: {minute_number}")  # Debug print
-        
+        # Initialize counters and lists for statistics
         total_instances = 0
-        gap_up_total = 0
-        gap_up_down_moves = 0
-        gap_up_down_moves_list = []
-        
-        gap_down_total = 0
-        gap_down_up_moves = 0
-        gap_down_up_moves_list = []
+        gap_stats = {
+            'gap_up': {
+                'total': 0,
+                'moved_up': 0,
+                'moved_down': 0,
+                'up_moves': [],
+                'down_moves': [],
+                'decisive_bearish': 0,  # For gap up moved down
+                'decisive_bearish_moves': [],  # Moves for decisive bearish candles
+                'decisive_bearish_high_open_diffs': []  # High to open differences for bearish candles
+            },
+            'gap_down': {
+                'total': 0,
+                'moved_up': 0,
+                'moved_down': 0,
+                'up_moves': [],
+                'down_moves': [],
+                'decisive_bullish': 0,  # For gap down moved up
+                'decisive_bullish_moves': [],  # Moves for decisive bullish candles
+                'decisive_bullish_low_open_diffs': []  # Low to open differences for bullish candles
+            }
+        }
 
-        for table in tables['name']:
-            print(f"\nProcessing stock: {table}")
+        def is_decisive_bearish_candle(open_price, high, low, close):
+            """Check if candle is decisively bearish (small upper wick, can have some lower wick)"""
+            if close >= open_price:  # Not bearish
+                return False
+                
+            body = abs(close - open_price)
+            upper_wick = high - open_price
+            lower_wick = close - low
             
-            # Get daily data for gap identification
-            query = f"""
-            SELECT 
-                date(ts) as date,
-                FIRST_VALUE(open) OVER (PARTITION BY date(ts)) as open,
-                LAST_VALUE(close) OVER (PARTITION BY date(ts)) as close
+            # Upper wick should be very small compared to body
+            if upper_wick > body * 0.15:  # Allow only 15% upper wick compared to body
+                return False
+                
+            # Lower wick can be up to 100% of body size
+            if lower_wick > body:
+                return False
+                
+            return True
+
+        def is_decisive_bullish_candle(open_price, high, low, close):
+            """Check if candle is decisively bullish (small lower wick, can have some upper wick)"""
+            if close <= open_price:  # Not bullish
+                return False
+                
+            body = abs(close - open_price)
+            upper_wick = high - close
+            lower_wick = open_price - low
+            
+            # Lower wick should be very small compared to body
+            if lower_wick > body * 0.15:  # Allow only 15% lower wick compared to body
+                return False
+                
+            # Upper wick can be up to 100% of body size
+            if upper_wick > body:
+                return False
+                
+            return True
+        
+        # Process each stock
+        for table in tables['name']:
+            # Get daily data for gap calculation
+            day_query = f"""
+            SELECT date(ts) as date, open, close
             FROM "{table}"
             WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
-            GROUP BY date(ts)
-            ORDER BY date(ts)
+            ORDER BY ts
             """
             
-            df = pd.read_sql_query(query, day_conn, params=(from_date, to_date))
-            print(f"Found {len(df)} daily records")
+            daily_data = pd.read_sql_query(day_query, day_conn, params=(from_date, to_date))
             
-            if len(df) > 0:
-                # Convert date column to datetime
-                df['date'] = pd.to_datetime(df['date'])
-                df.set_index('date', inplace=True)
+            # Skip if not enough data
+            if len(daily_data) < 2:
+                continue
                 
-                df['prev_close'] = df['close'].shift(1)
-                df['gap_percent'] = (df['open'] - df['prev_close']) / df['prev_close'] * 100
+            # Calculate gaps and analyze moves
+            for i in range(1, len(daily_data)):
+                total_instances += 1
+                prev_close = daily_data.iloc[i-1]['close']
+                curr_open = daily_data.iloc[i]['open']
+                curr_date = daily_data.iloc[i]['date']
                 
-                total_instances += len(df) - 1
+                # Calculate gap percentage
+                gap_percent = ((curr_open - prev_close) / prev_close) * 100
                 
-                # Only process if stock has minute data
+                # Skip if gap is less than 2%
+                if abs(gap_percent) < 2:
+                    continue
+                    
+                # Get minute data for the current date
                 if table in minute_connections:
                     minute_query = f"""
-                    WITH MinuteData AS (
-                        SELECT 
-                            date(ts) as date,
-                            time(ts) as time,
-                            open,
-                            close,
-                            ROW_NUMBER() OVER (PARTITION BY date(ts) ORDER BY ts) as minute_number
-                        FROM "{table}"
-                        WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
-                    )
-                    SELECT 
-                        date,
-                        MIN(CASE WHEN minute_number = 1 THEN open END) as first_min_open,
-                        MIN(CASE WHEN minute_number = {minute_number} THEN close END) as analysis_min_close
-                    FROM MinuteData
-                    GROUP BY date
+                    SELECT time(ts) as time, open, high, low, close
+                    FROM "{table}"
+                    WHERE date(ts) = date(?)
+                    AND time(ts) <= time(?)
+                    ORDER BY ts
                     """
                     
-                    minute_df = pd.read_sql_query(minute_query, minute_connections[table], 
-                                                params=(from_date, to_date))
+                    minute_data = pd.read_sql_query(
+                        minute_query,
+                        minute_connections[table],
+                        params=(curr_date, analysis_time)
+                    )
                     
-                    if len(minute_df) > 0:
-                        minute_df['date'] = pd.to_datetime(minute_df['date'])
-                        minute_df.set_index('date', inplace=True)
+                    if len(minute_data) > 0:
+                        # Get the last candle data
+                        last_candle = minute_data.iloc[-1]
+                        analysis_price = last_candle['close']
                         
-                        # Process each day
-                        for date in df.index[1:]:  # Skip first day
-                            gap_percent = df.loc[date, 'gap_percent']
-                            
-                            # Get minute data for this date
-                            if date in minute_df.index:
-                                first_min_open = minute_df.loc[date, 'first_min_open']
-                                analysis_min_close = minute_df.loc[date, 'analysis_min_close']
+                        # Calculate move percentage from open
+                        move_percent = ((analysis_price - curr_open) / curr_open) * 100
+                        
+                        if gap_percent > 0:  # Gap Up
+                            gap_stats['gap_up']['total'] += 1
+                            if move_percent > 0:  # Moved further up
+                                gap_stats['gap_up']['moved_up'] += 1
+                                gap_stats['gap_up']['up_moves'].append(move_percent)
+                            else:  # Moved down
+                                gap_stats['gap_up']['moved_down'] += 1
+                                gap_stats['gap_up']['down_moves'].append(abs(move_percent))
                                 
-                                if pd.notna(first_min_open) and pd.notna(analysis_min_close):
-                                    move_percent = ((analysis_min_close - first_min_open) / first_min_open) * 100
+                                # Check if it's a decisive bearish candle
+                                if is_decisive_bearish_candle(
+                                    last_candle['open'],
+                                    last_candle['high'],
+                                    last_candle['low'],
+                                    last_candle['close']
+                                ):
+                                    gap_stats['gap_up']['decisive_bearish'] += 1
+                                    gap_stats['gap_up']['decisive_bearish_moves'].append(abs(move_percent))
+                                    # Calculate high to open difference for bearish candles
+                                    high_open_diff = ((last_candle['high'] - last_candle['open']) / last_candle['open']) * 100
+                                    if 'decisive_bearish_high_open_diffs' not in gap_stats['gap_up']:
+                                        gap_stats['gap_up']['decisive_bearish_high_open_diffs'] = []
+                                    gap_stats['gap_up']['decisive_bearish_high_open_diffs'].append(high_open_diff)
                                     
-                                    if gap_percent > 3:  # Gap Up
-                                        gap_up_total += 1
-                                        if analysis_min_close < first_min_open:  # Moved down
-                                            gap_up_down_moves += 1
-                                            gap_up_down_moves_list.append(abs(move_percent))
-                                            
-                                    elif gap_percent < -3:  # Gap Down
-                                        gap_down_total += 1
-                                        if analysis_min_close > first_min_open:  # Moved up
-                                            gap_down_up_moves += 1
-                                            gap_down_up_moves_list.append(move_percent)
-                            else:
-                                print(f"No minute data found for date: {date}")
-                    
-                    del minute_df
-
-        # Close connections
-        day_conn.close()
-        for conn in set(minute_connections.values()):
-            conn.close()
+                        else:  # Gap Down
+                            gap_stats['gap_down']['total'] += 1
+                            if move_percent > 0:  # Moved up
+                                gap_stats['gap_down']['moved_up'] += 1
+                                gap_stats['gap_down']['up_moves'].append(move_percent)
+                                
+                                # Check if it's a decisive bullish candle
+                                if is_decisive_bullish_candle(
+                                    last_candle['open'],
+                                    last_candle['high'],
+                                    last_candle['low'],
+                                    last_candle['close']
+                                ):
+                                    gap_stats['gap_down']['decisive_bullish'] += 1
+                                    gap_stats['gap_down']['decisive_bullish_moves'].append(move_percent)
+                                    # Calculate low to open difference for bullish candles
+                                    low_open_diff = ((last_candle['low'] - last_candle['open']) / last_candle['open']) * 100
+                                    if 'decisive_bullish_low_open_diffs' not in gap_stats['gap_down']:
+                                        gap_stats['gap_down']['decisive_bullish_low_open_diffs'] = []
+                                    gap_stats['gap_down']['decisive_bullish_low_open_diffs'].append(low_open_diff)
+                                    
+                            else:  # Moved further down
+                                gap_stats['gap_down']['moved_down'] += 1
+                                gap_stats['gap_down']['down_moves'].append(abs(move_percent))
         
-        # Calculate statistics
-        gap_up_stats = {
-            'avg': np.mean(gap_up_down_moves_list) if gap_up_down_moves_list else 0,
-            'std': np.std(gap_up_down_moves_list) if gap_up_down_moves_list else 0,
-            'p90': np.percentile(gap_up_down_moves_list, 90) if gap_up_down_moves_list else 0
-        }
-        
-        gap_down_stats = {
-            'avg': np.mean(gap_down_up_moves_list) if gap_down_up_moves_list else 0,
-            'std': np.std(gap_down_up_moves_list) if gap_down_up_moves_list else 0,
-            'p90': np.percentile(gap_down_up_moves_list, 90) if gap_down_up_moves_list else 0
-        }
+        # Calculate statistics for moves
+        for gap_type in ['gap_up', 'gap_down']:
+            # Stats for upward moves
+            up_moves = gap_stats[gap_type]['up_moves']
+            if up_moves:
+                gap_stats[gap_type]['up_avg_move'] = f"{sum(up_moves) / len(up_moves):.2f}%"
+                gap_stats[gap_type]['up_std_move'] = f"{pd.Series(up_moves).std():.2f}%"
+                gap_stats[gap_type]['up_p90_move'] = f"{pd.Series(up_moves).quantile(0.9):.2f}%"
+            else:
+                gap_stats[gap_type]['up_avg_move'] = "0.00%"
+                gap_stats[gap_type]['up_std_move'] = "0.00%"
+                gap_stats[gap_type]['up_p90_move'] = "0.00%"
+            
+            # Stats for downward moves
+            down_moves = gap_stats[gap_type]['down_moves']
+            if down_moves:
+                gap_stats[gap_type]['down_avg_move'] = f"{sum(down_moves) / len(down_moves):.2f}%"
+                gap_stats[gap_type]['down_std_move'] = f"{pd.Series(down_moves).std():.2f}%"
+                gap_stats[gap_type]['down_p90_move'] = f"{pd.Series(down_moves).quantile(0.9):.2f}%"
+            else:
+                gap_stats[gap_type]['down_avg_move'] = "0.00%"
+                gap_stats[gap_type]['down_std_move'] = "0.00%"
+                gap_stats[gap_type]['down_p90_move'] = "0.00%"
+            
+        # Calculate statistics for decisive moves
+        if gap_stats['gap_up']['decisive_bearish_moves']:
+            moves = gap_stats['gap_up']['decisive_bearish_moves']
+            gap_stats['gap_up']['decisive_bearish_avg'] = f"{sum(moves) / len(moves):.2f}%"
+            gap_stats['gap_up']['decisive_bearish_std'] = f"{pd.Series(moves).std():.2f}%"
+            gap_stats['gap_up']['decisive_bearish_p90'] = f"{pd.Series(moves).quantile(0.9):.2f}%"
+            
+            # Calculate high-open difference statistics for bearish candles
+            high_open_diffs = gap_stats['gap_up']['decisive_bearish_high_open_diffs']
+            gap_stats['gap_up']['decisive_bearish_high_open_avg'] = f"{sum(high_open_diffs) / len(high_open_diffs):.2f}%"
+            gap_stats['gap_up']['decisive_bearish_high_open_std'] = f"{pd.Series(high_open_diffs).std():.2f}%"
+            gap_stats['gap_up']['decisive_bearish_high_open_p90'] = f"{pd.Series(high_open_diffs).quantile(0.9):.2f}%"
+        else:
+            gap_stats['gap_up']['decisive_bearish_avg'] = "0.00%"
+            gap_stats['gap_up']['decisive_bearish_std'] = "0.00%"
+            gap_stats['gap_up']['decisive_bearish_p90'] = "0.00%"
+            gap_stats['gap_up']['decisive_bearish_high_open_avg'] = "0.00%"
+            gap_stats['gap_up']['decisive_bearish_high_open_std'] = "0.00%"
+            gap_stats['gap_up']['decisive_bearish_high_open_p90'] = "0.00%"
+            
+        if gap_stats['gap_down']['decisive_bullish_moves']:
+            moves = gap_stats['gap_down']['decisive_bullish_moves']
+            gap_stats['gap_down']['decisive_bullish_avg'] = f"{sum(moves) / len(moves):.2f}%"
+            gap_stats['gap_down']['decisive_bullish_std'] = f"{pd.Series(moves).std():.2f}%"
+            gap_stats['gap_down']['decisive_bullish_p90'] = f"{pd.Series(moves).quantile(0.9):.2f}%"
+            
+            # Calculate low-open difference statistics for bullish candles
+            low_open_diffs = gap_stats['gap_down']['decisive_bullish_low_open_diffs']
+            gap_stats['gap_down']['decisive_bullish_low_open_avg'] = f"{sum(low_open_diffs) / len(low_open_diffs):.2f}%"
+            gap_stats['gap_down']['decisive_bullish_low_open_std'] = f"{pd.Series(low_open_diffs).std():.2f}%"
+            gap_stats['gap_down']['decisive_bullish_low_open_p90'] = f"{pd.Series(low_open_diffs).quantile(0.9):.2f}%"
+        else:
+            gap_stats['gap_down']['decisive_bullish_avg'] = "0.00%"
+            gap_stats['gap_down']['decisive_bullish_std'] = "0.00%"
+            gap_stats['gap_down']['decisive_bullish_p90'] = "0.00%"
+            gap_stats['gap_down']['decisive_bullish_low_open_avg'] = "0.00%"
+            gap_stats['gap_down']['decisive_bullish_low_open_std'] = "0.00%"
+            gap_stats['gap_down']['decisive_bullish_low_open_p90'] = "0.00%"
         
         return {
             'total_instances': total_instances,
-            'details': {
-                'gap_up': {
-                    'total': gap_up_total,
-                    'moved_down': gap_up_down_moves,
-                    'avg_move': f"{gap_up_stats['avg']:.2f}%",
-                    'std_move': f"{gap_up_stats['std']:.2f}%",
-                    'p90_move': f"{gap_up_stats['p90']:.2f}%"
-                },
-                'gap_down': {
-                    'total': gap_down_total,
-                    'moved_up': gap_down_up_moves,
-                    'avg_move': f"{gap_down_stats['avg']:.2f}%",
-                    'std_move': f"{gap_down_stats['std']:.2f}%",
-                    'p90_move': f"{gap_down_stats['p90']:.2f}%"
-                }
-            }
+            'details': gap_stats
         }
         
     except Exception as e:

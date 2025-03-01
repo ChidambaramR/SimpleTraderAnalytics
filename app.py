@@ -145,13 +145,13 @@ def analyze_gaps_first_minute():
         analysis_time = request.form.get('analysis_time', '09:15')
         
         first_min_results = analyze_first_minute_moves(from_date, to_date, analysis_time)
-        rest_of_day_results = analyze_first_minute_rest_of_day_moves(from_date, to_date)
+        #rest_of_day_results = analyze_first_minute_rest_of_day_moves(from_date, to_date)
         
         # Combine both results
         results = {
             'total_instances': first_min_results['total_instances'],
             'details': first_min_results['details'],
-            'rest_of_day': rest_of_day_results
+            #'rest_of_day': rest_of_day_results
         }
         
     return render_template('analyze/gaps/first_minute.html', results=results)

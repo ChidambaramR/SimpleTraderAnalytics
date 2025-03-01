@@ -145,6 +145,10 @@ class DayTrader(ABC):
                         print(f"Error checking stock {stock}: {str(e)}")
                         continue
                 
+                # Sort tradeable stocks by absolute gap percentage and take top 5
+                # self.daily_gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
+                # tradeable_stocks = [gap['symbol'] for gap in self.daily_gaps[:5]]
+
                 # Get available capital for each stock
                 capital_allocation = self.get_available_capital(tradeable_stocks)
                 

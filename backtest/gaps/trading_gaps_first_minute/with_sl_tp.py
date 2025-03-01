@@ -86,7 +86,6 @@ class FirstMinuteGapTrader(DayTrader):
             
             # Loop through minutes until exit time
             for i in range(0, minutes_to_exit):
-                print(f"Checking minute {i}")
                 current_minute = minute_data.iloc[i]
                 
                 # Check for stop loss
@@ -116,7 +115,6 @@ class FirstMinuteGapTrader(DayTrader):
             
             # Loop through minutes until exit time
             for i in range(0, minutes_to_exit):
-                print(f"Checking minute {i}")
                 current_minute = minute_data.iloc[i]
                 
                 # Check for stop loss
