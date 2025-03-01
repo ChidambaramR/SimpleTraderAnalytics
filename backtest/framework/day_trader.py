@@ -203,8 +203,9 @@ class DayTrader(ABC):
             
         trades_df = pd.DataFrame(self.trades)
         win_ratio = (self.wins / self.total_trades * 100) if self.total_trades > 0 else 0
-        total_pnl = self.current_equity - self.initial_capital - self.capital_added
-        roi = (total_pnl / self.initial_capital * 100)
+        total_capital = self.initial_capital + self.capital_added
+        total_pnl = self.current_equity - total_capital
+        roi = (total_pnl / total_capital * 100)
         
         # Calculate trade statistics
         profitable_trades = trades_df[trades_df['PNL'] > 0]
