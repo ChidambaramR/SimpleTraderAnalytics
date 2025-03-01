@@ -114,8 +114,9 @@ def sync_data_from_s3():
                     
                     local_dir = os.path.join(current_dir, 'data', year, month, day)
                     
+                    stock_name = None
                     if filename.startswith('pre_market'):
-                    # Always save as pre_market_ticks_data_*.txt
+                        # Always save as pre_market_ticks_data_*.txt
                         stock_name = filename.split('_')[-1].replace('.txt', '')
                         local_filename = f'pre_market_ticks_data_{stock_name}.txt'
                     else:
@@ -132,8 +133,12 @@ def sync_data_from_s3():
                         manifest['logs'][key] = etag
                         
                         # After reading ticks data:
-                        df = get_ticks_data(local_filename, date_obj, stock_name)
-                        store_ticks_data(df, stock_name)
+                        if stock_name is not None:
+                            try:
+                                df = get_ticks_data(local_filename, date_obj, stock_name)
+                                store_ticks_data(df, stock_name)
+                            except Exception as e:
+                                logger.error(f"Error processing {local_filename}")
         
         # Save updated manifest
         with open(manifest_path, 'w') as f:
