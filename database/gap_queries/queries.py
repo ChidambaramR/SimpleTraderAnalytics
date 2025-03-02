@@ -650,9 +650,18 @@ def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
     except Exception as e:
         return {'error': f"Error analyzing first minute moves: {str(e)}"}
 
-def analyze_first_minute_rest_of_day_moves(from_date, to_date):
+def analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute='09:15'):
     """
-    Analyzes how price moves after first minute for different gap and first minute scenarios.
+    Analyzes how price moves after specified minute for different gap scenarios.
+    Also analyzes price increments for gap up and gap down cases.
+    
+    Args:
+        from_date: Start date for analysis
+        to_date: End date for analysis
+        analysis_minute: Time to analyze (format: 'HH:MM', default: '09:15')
+        
+    Returns:
+        dict: Dictionary containing analysis results and matching scenario data
     """
     try:
         day_conn, tables = get_db_and_tables('day')
@@ -661,11 +670,25 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date):
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
         
+        # Initialize aggregated increment results
+        gap_up_increments = {i: 0 for i in range(1, 11)}
+        gap_down_increments = {i: 0 for i in range(1, 11)}
+        gap_up_increment_counts = {i: 0 for i in range(1, 11)}
+        gap_down_increment_counts = {i: 0 for i in range(1, 11)}
+        
         # Counters for different scenarios
-        gap_up_first_up = {'total': 0, 'crossed_down': 0}
-        gap_up_first_down = {'total': 0, 'crossed_up': 0}
-        gap_down_first_up = {'total': 0, 'crossed_down': 0}
-        gap_down_first_down = {'total': 0, 'crossed_up': 0}
+        gap_up_nth_up = {'total': 0, 'crossed_down': 0}
+        gap_up_nth_down = {'total': 0, 'crossed_up': 0}
+        gap_down_nth_up = {'total': 0, 'crossed_down': 0}
+        gap_down_nth_down = {'total': 0, 'crossed_up': 0}
+        
+        # Store matching scenarios for each case
+        matching_scenarios = {
+            'gap_up_crossed': [],
+            'gap_up_not_crossed': [],
+            'gap_down_crossed': [],
+            'gap_down_not_crossed': []
+        }
 
         for table in tables['name']:
             # Get daily data
@@ -695,9 +718,10 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date):
                     date(ts) as date,
                     time(ts) as time,
                     FIRST_VALUE(open) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_open,
-                    FIRST_VALUE(close) OVER (PARTITION BY date(ts) ORDER BY ts) as first_min_close,
+                    open,
                     high,
-                    low
+                    low,
+                    close
                 FROM "{table}"
                 WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
                 """
@@ -706,47 +730,120 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date):
                 
                 if len(minute_df) > 0:
                     minute_df['date'] = pd.to_datetime(minute_df['date'])
+                    minute_df['time'] = pd.to_datetime(minute_df['time'].apply(lambda x: f"2000-01-01 {x}")).dt.time
                     
                     # Process each day
                     for date in df.index[1:]:  # Skip first day
                         gap_percent = df.loc[date, 'gap_percent']
                         day_open = df.loc[date, 'open']
+                        prev_close = df.loc[date, 'prev_close']
                         
                         # Get this day's minute data
                         day_minute_data = minute_df[minute_df['date'] == date]
                         if len(day_minute_data) < 2:  # Need at least 2 minutes of data
                             continue
-                            
+
                         # Get first minute data
                         first_min = day_minute_data.iloc[0]
                         first_min_open = first_min['first_min_open']
-                        first_min_close = first_min['first_min_close']
-                        first_min_move = ((first_min_close - first_min_open) / first_min_open) * 100
-                        
-                        # Get rest of day data (after 09:16)
-                        rest_of_day = day_minute_data[day_minute_data['time'] > '09:16']
+                            
+                        # Get the specified minute's data
+                        analysis_time = datetime.strptime(analysis_minute, '%H:%M').time()
+                        nth_minute_data = day_minute_data[day_minute_data['time'] == analysis_time]
+                        if len(nth_minute_data) == 0:
+                            continue
+                            
+                        nth_minute_open = nth_minute_data.iloc[0]['open']
+
+                        # Get rest of day data (after analysis_minute)
+                        rest_of_day = day_minute_data[day_minute_data['time'] > analysis_time]
                         if len(rest_of_day) == 0:
                             continue
                             
-                        if gap_percent > 3:  # Gap Up
-                            if first_min_close > first_min_open:  # First minute up
-                                gap_up_first_up['total'] += 1
+                        # Prepare OHLC data for this day
+                        ohlc_data = []
+                        for _, row in day_minute_data.iterrows():
+                            ohlc_data.append({
+                                'time': row['time'].strftime('%H:%M'),
+                                'open': float(row['open']),
+                                'high': float(row['high']),
+                                'low': float(row['low']),
+                                'close': float(row['close'])
+                            })
+                            
+                        # Analyze price increments for the rest of the day
+                        if gap_percent > 3:  # Gap Up                                    
+                            if nth_minute_open > first_min_open:  # nth minute up
+                                # Analyze price increments
+                                increment_results = analyze_price_increments(prev_close, 'up', rest_of_day)
+                                if 'error' not in increment_results:
+                                    for pct, data in increment_results.items():
+                                        gap_up_increments[pct] += data['hit_percentage']
+                                        gap_up_increment_counts[pct] += 1
+
+                                gap_up_nth_up['total'] += 1
                                 if rest_of_day['low'].min() < day_open:
-                                    gap_up_first_up['crossed_down'] += 1
-                            else:  # First minute down
-                                gap_up_first_down['total'] += 1
+                                    gap_up_nth_up['crossed_down'] += 1
+                                    # Store scenario data for gap up crossed
+                                    matching_scenarios['gap_up_crossed'].append({
+                                        'stock': table,
+                                        'date': date.strftime('%Y-%m-%d'),
+                                        'gap_percent': float(gap_percent),
+                                        'prev_close': float(prev_close),
+                                        'day_open': float(day_open),
+                                        'ohlc_data': ohlc_data
+                                    })
+                                else:
+                                    # Store scenario data for gap up not crossed
+                                    matching_scenarios['gap_up_not_crossed'].append({
+                                        'stock': table,
+                                        'date': date.strftime('%Y-%m-%d'),
+                                        'gap_percent': float(gap_percent),
+                                        'prev_close': float(prev_close),
+                                        'day_open': float(day_open),
+                                        'ohlc_data': ohlc_data
+                                    })
+
+                            else:  # nth minute down
+                                gap_up_nth_down['total'] += 1
                                 if rest_of_day['high'].max() > day_open:
-                                    gap_up_first_down['crossed_up'] += 1
+                                    gap_up_nth_down['crossed_up'] += 1
                                     
-                        elif gap_percent < -3:  # Gap Down
-                            if first_min_close > first_min_open:  # First minute up
-                                gap_down_first_up['total'] += 1
+                        elif gap_percent < -3:  # Gap Down                                    
+                            if nth_minute_open > first_min_open:  # nth minute up
+                                gap_down_nth_up['total'] += 1
                                 if rest_of_day['low'].min() < day_open:
-                                    gap_down_first_up['crossed_down'] += 1
-                            else:  # First minute down
-                                gap_down_first_down['total'] += 1
+                                    gap_down_nth_up['crossed_down'] += 1
+                            else:  # nth minute down
+                                # Analyze price increments
+                                increment_results = analyze_price_increments(prev_close, 'down', rest_of_day)
+                                if 'error' not in increment_results:
+                                    for pct, data in increment_results.items():
+                                        gap_down_increments[pct] += data['hit_percentage']
+                                        gap_down_increment_counts[pct] += 1
+
+                                gap_down_nth_down['total'] += 1
                                 if rest_of_day['high'].max() > day_open:
-                                    gap_down_first_down['crossed_up'] += 1
+                                    gap_down_nth_down['crossed_up'] += 1
+                                    # Store scenario data for gap down crossed
+                                    matching_scenarios['gap_down_crossed'].append({
+                                        'stock': table,
+                                        'date': date.strftime('%Y-%m-%d'),
+                                        'gap_percent': float(gap_percent),
+                                        'prev_close': float(prev_close),
+                                        'day_open': float(day_open),
+                                        'ohlc_data': ohlc_data
+                                    })
+                                else:
+                                    # Store scenario data for gap down not crossed
+                                    matching_scenarios['gap_down_not_crossed'].append({
+                                        'stock': table,
+                                        'date': date.strftime('%Y-%m-%d'),
+                                        'gap_percent': float(gap_percent),
+                                        'prev_close': float(prev_close),
+                                        'day_open': float(day_open),
+                                        'ohlc_data': ohlc_data
+                                    })
                     
                     del day_minute_data
                 del minute_df
@@ -755,36 +852,131 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date):
         day_conn.close()
         for conn in set(minute_connections.values()):
             conn.close()
+            
+        # Calculate average hit percentages for each increment
+        gap_up_avg_increments = {
+            pct: gap_up_increments[pct] / gap_up_increment_counts[pct]
+            for pct in gap_up_increments
+            if gap_up_increment_counts[pct] > 0
+        }
+        
+        gap_down_avg_increments = {
+            pct: gap_down_increments[pct] / gap_down_increment_counts[pct]
+            for pct in gap_down_increments
+            if gap_down_increment_counts[pct] > 0
+        }
+        
+        # Get a random scenario for each case
+        random_scenarios = {}
+        for scenario_type, scenarios in matching_scenarios.items():
+            if scenarios:
+                # Return all scenarios instead of just one random one
+                random_scenarios[scenario_type] = scenarios
         
         return {
-            'gap_up_first_up': {
-                'total': gap_up_first_up['total'],
-                'crossed_down': gap_up_first_up['crossed_down'],
-                'crossed_percent': (gap_up_first_up['crossed_down'] / gap_up_first_up['total'] * 100) 
-                                 if gap_up_first_up['total'] > 0 else 0
+            'gap_up_nth_up': {
+                'total': gap_up_nth_up['total'],
+                'crossed_down': gap_up_nth_up['crossed_down'],
+                'crossed_percent': (gap_up_nth_up['crossed_down'] / gap_up_nth_up['total'] * 100)
+                                 if gap_up_nth_up['total'] > 0 else 0
             },
-            'gap_up_first_down': {
-                'total': gap_up_first_down['total'],
-                'crossed_up': gap_up_first_down['crossed_up'],
-                'crossed_percent': (gap_up_first_down['crossed_up'] / gap_up_first_down['total'] * 100)
-                                 if gap_up_first_down['total'] > 0 else 0
+            'gap_up_nth_down': {
+                'total': gap_up_nth_down['total'],
+                'crossed_up': gap_up_nth_down['crossed_up'],
+                'crossed_percent': (gap_up_nth_down['crossed_up'] / gap_up_nth_down['total'] * 100)
+                                 if gap_up_nth_down['total'] > 0 else 0
             },
-            'gap_down_first_up': {
-                'total': gap_down_first_up['total'],
-                'crossed_down': gap_down_first_up['crossed_down'],
-                'crossed_percent': (gap_down_first_up['crossed_down'] / gap_down_first_up['total'] * 100)
-                                 if gap_down_first_up['total'] > 0 else 0
+            'gap_down_nth_up': {
+                'total': gap_down_nth_up['total'],
+                'crossed_down': gap_down_nth_up['crossed_down'],
+                'crossed_percent': (gap_down_nth_up['crossed_down'] / gap_down_nth_up['total'] * 100)
+                                 if gap_down_nth_up['total'] > 0 else 0
             },
-            'gap_down_first_down': {
-                'total': gap_down_first_down['total'],
-                'crossed_up': gap_down_first_down['crossed_up'],
-                'crossed_percent': (gap_down_first_down['crossed_up'] / gap_down_first_down['total'] * 100)
-                                 if gap_down_first_down['total'] > 0 else 0
-            }
+            'gap_down_nth_down': {
+                'total': gap_down_nth_down['total'],
+                'crossed_up': gap_down_nth_down['crossed_up'],
+                'crossed_percent': (gap_down_nth_down['crossed_up'] / gap_down_nth_down['total'] * 100)
+                                 if gap_down_nth_down['total'] > 0 else 0
+            },
+            'gap_up_increments': gap_up_avg_increments,
+            'gap_down_increments': gap_down_avg_increments,
+            'gap_up_increment_counts': gap_up_increment_counts,
+            'gap_down_increment_counts': gap_down_increment_counts,
+            'scenarios': random_scenarios
         }
         
     except Exception as e:
         print(f"Error in analyze_first_minute_rest_of_day_moves: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {'error': f"Error analyzing rest of day moves: {str(e)}"} 
+        return {'error': f"Error analyzing rest of day moves: {str(e)}"}
+
+def analyze_price_increments(prev_close, gap_type, minute_df):
+    """
+    Analyzes what percentage of minutes hit different price increments from previous day's close.
+    
+    Args:
+        prev_close (float): Previous day's closing price
+        gap_type (str): Either 'up' or 'down'
+        minute_df (pd.DataFrame): DataFrame containing minute data with columns [open, high, low, close]
+        
+    Returns:
+        dict: Dictionary containing increment percentages and their hit percentages
+    """
+    try:
+        results = {}
+        total_minutes = len(minute_df)
+        
+        if total_minutes == 0:
+            return {'error': 'No minute data provided'}
+            
+        # Generate increment levels
+        increments = []
+        for i in range(1, 11):  # 1% to 10%
+            if gap_type.lower() == 'down':
+                # For gap down, calculate prices below prev_close
+                price_level = prev_close * (1 - i/100)
+                increments.append((i, price_level))  # Store both percentage and price
+            else:
+                # For gap up, calculate prices above prev_close
+                price_level = prev_close * (1 + i/100)
+                increments.append((i, price_level))  # Store both percentage and price
+        
+        # Analyze each increment level
+        for increment_pct, price_level in increments:
+            if gap_type.lower() == 'down':
+                # For gap down, count minutes where price went below the level
+                minutes_hit = len(minute_df[
+                    (minute_df['open'] < price_level) |
+                    (minute_df['high'] < price_level) |
+                    (minute_df['low'] < price_level) |
+                    (minute_df['close'] < price_level)
+                ])
+                # Only include this increment if at least one minute hit it
+                if minutes_hit > 0:
+                    hit_percentage = (minutes_hit / total_minutes) * 100
+                    results[increment_pct] = {
+                        'hit_percentage': hit_percentage,
+                        'minutes_hit': minutes_hit
+                    }
+            else:
+                # For gap up, count minutes where price went above the level
+                minutes_hit = len(minute_df[
+                    (minute_df['open'] > price_level) |
+                    (minute_df['high'] > price_level) |
+                    (minute_df['low'] > price_level) |
+                    (minute_df['close'] > price_level)
+                ])
+                # Only include this increment if at least one minute hit it
+                if minutes_hit > 0:
+                    hit_percentage = (minutes_hit / total_minutes) * 100
+                    results[increment_pct] = {
+                        'hit_percentage': hit_percentage,
+                        'minutes_hit': minutes_hit
+                    }
+            
+        return results
+        
+    except Exception as e:
+        print(f"Error in analyze_price_increments: {str(e)}")
+        return {'error': str(e)}

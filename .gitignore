@@ -15,6 +15,7 @@ database/ohlc_data/*.db
 prod_stats/data/*
 prod_stats/manifest.json
 keys.json
+static/scenario_charts/*
 
 # Distribution / packaging
 .Python

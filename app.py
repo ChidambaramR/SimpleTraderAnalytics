@@ -180,6 +180,154 @@ def analyze_gaps_first_minute():
         
     return render_template('analyze/gaps/first_minute.html', results=results)
 
+@app.route('/analyze/gaps/further-moves', methods=['GET', 'POST'])
+def analyze_moves_on_further_gaps():
+    results = None
+    error = None
+    scenario_data = None
+    
+    if request.method == 'POST':
+        try:
+            from_date = request.form.get('from_date')
+            to_date = request.form.get('to_date')
+            analysis_minute = request.form.get('analysis_minute', '09:15')
+            force_rerun = request.form.get('force_rerun') == 'on'
+            
+            if not from_date or not to_date:
+                error = 'Missing required dates'
+            else:
+                print(f"Analyzing gaps with params: from={from_date}, to={to_date}, minute={analysis_minute}")
+                
+                # Call the analysis function with the specified minute
+                analysis_results = analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute)
+                
+                if 'error' in analysis_results:
+                    print(f"Analysis error: {analysis_results['error']}")
+                    error = analysis_results['error']
+                    results = None
+                else:
+                    print(f"Analysis completed successfully")
+                    # Get all results except scenarios
+                    results = {k: v for k, v in analysis_results.items() if k != 'scenarios'}
+                    
+                    # Generate and save chart images
+                    if 'scenarios' in analysis_results:
+                        import os
+                        import matplotlib.pyplot as plt
+                        import matplotlib.dates as mdates
+                        from datetime import datetime
+                        import random
+                        
+                        # Clear existing charts
+                        import shutil
+                        charts_dir = os.path.join('static', 'scenario_charts')
+                        if os.path.exists(charts_dir):
+                            shutil.rmtree(charts_dir)
+                        os.makedirs(charts_dir)
+                        
+                        scenario_counts = {}
+                        scenario_details = {}
+                        
+                        # Process each scenario type
+                        for scenario_type, scenarios in analysis_results['scenarios'].items():
+                            if not scenarios:  # Skip if no scenarios for this type
+                                continue
+                                
+                            scenario_dir = os.path.join(charts_dir, scenario_type)
+                            os.makedirs(scenario_dir)
+                            
+                            # Get all scenarios for this type
+                            scenario_counts[scenario_type] = len(scenarios)
+                            scenario_details[scenario_type] = []
+                            
+                            # Generate chart for each scenario
+                            for i, scenario in enumerate(scenarios[:50]):  # Limit to 50 scenarios per type
+                                # Create figure and axis with wider dimensions
+                                plt.rcParams['figure.figsize'] = [20, 10]  # Make the figure wider
+                                plt.rcParams['figure.dpi'] = 100
+                                fig, ax = plt.subplots()
+                                
+                                # Convert time strings to datetime for proper x-axis
+                                times = [datetime.strptime(t, '%H:%M') for t in [d['time'] for d in scenario['ohlc_data']]]
+                                
+                                # Plot candlesticks
+                                for j, candle in enumerate(scenario['ohlc_data']):
+                                    time = times[j]
+                                    open_price = float(candle['open'])
+                                    close = float(candle['close'])
+                                    high = float(candle['high'])
+                                    low = float(candle['low'])
+                                    
+                                    # Determine color based on price movement
+                                    color = 'g' if close >= open_price else 'r'
+                                    
+                                    # Plot candle body
+                                    ax.plot([time, time], [open_price, close], color=color, linewidth=3)
+                                    # Plot wicks
+                                    ax.plot([time, time], [low, high], color=color, linewidth=1)
+                                
+                                # Plot horizontal lines for previous close and day open
+                                ax.axhline(y=scenario['prev_close'], color='red', linestyle='--', label='Previous Close')
+                                ax.axhline(y=scenario['day_open'], color='blue', linestyle='--', label='Day Open')
+                                
+                                # Add first minute high/low line based on scenario type
+                                first_min_data = scenario['ohlc_data'][0]  # First minute's data
+                                if scenario_type.startswith('gap_up'):
+                                    # For gap up scenarios, show first minute low
+                                    first_min_low = float(first_min_data['low'])
+                                    ax.axhline(y=first_min_low, color='orange', linestyle='--', label='First Min Low')
+                                else:
+                                    # For gap down scenarios, show first minute high
+                                    first_min_high = float(first_min_data['high'])
+                                    ax.axhline(y=first_min_high, color='orange', linestyle='--', label='First Min High')
+                                
+                                # Format x-axis
+                                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                                plt.xticks(rotation=45)
+                                
+                                # Add grid
+                                ax.grid(True, linestyle='--', alpha=0.7)
+                                
+                                # Add legend
+                                ax.legend()
+                                
+                                # Add title
+                                plt.title(f"{scenario['stock']} - {scenario['date']} (Gap: {scenario['gap_percent']:.2f}%)")
+                                
+                                # Adjust layout to prevent text cutoff
+                                plt.tight_layout()
+                                
+                                # Save chart with extra padding
+                                chart_filename = f"chart_{i}.png"
+                                chart_path = os.path.join(scenario_dir, chart_filename)
+                                plt.savefig(chart_path, bbox_inches='tight', dpi=100, pad_inches=0.5)
+                                plt.close()
+                                
+                                # Store scenario details
+                                scenario_details[scenario_type].append({
+                                    'index': i,
+                                    'image_url': f"/static/scenario_charts/{scenario_type}/chart_{i}.png"
+                                })
+                        
+                        # Store scenario data for template
+                        scenario_data = {
+                            'counts': scenario_counts,
+                            'details': scenario_details,
+                            'current_scenario': 'gap_up_crossed'
+                        }
+            
+        except Exception as e:
+            print(f"Error in analyze_moves_on_further_gaps: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            error = str(e)
+            results = None
+        
+    return render_template('analyze/gaps/analyze_moves_on_further_gaps.html', 
+                         results=results,
+                         scenario_data=scenario_data,
+                         error=error)
+
 @app.route('/trader-stats/opening-gaps-trader')
 def opening_gaps_trader_stats():
     from_date = request.args.get('from_date')

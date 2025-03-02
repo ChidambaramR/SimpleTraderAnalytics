@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Analyze Moves on Further Gaps{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Analyze Moves on Further Gaps</h2>
+    
+    <div class="card">
+        <div class="card-body">
+            <form action="{{ url_for('analyze_moves_on_further_gaps') }}" method="POST">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="fromDate">From Date:</label>
+                            <input type="date" class="form-control" id="fromDate" name="from_date" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="toDate">To Date:</label>
+                            <input type="date" class="form-control" id="toDate" name="to_date" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="lastMinute">Analysis Minute:</label>
+                            <input type="time" class="form-control" id="lastMinute" name="analysis_minute" value="09:15" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="forceRerun" name="force_rerun">
+                            <label class="form-check-label" for="forceRerun">Force Rerun</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">Analyze</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if scenario_data and not scenario_data.error %}
+    <div class="card mt-4">
+        <div class="card-body">
+            <h4>Sample Scenario Charts</h4>
+            <div class="mb-3">
+                <label for="scenarioSelect" class="form-label">Select Scenario Type:</label>
+                <select class="form-select" id="scenarioSelect" onchange="switchScenarioType(this.value)">
+                    <option value="gap_up_crossed">Gap Up → Nth Min Up → Crossed Below Day Open</option>
+                    <option value="gap_up_not_crossed">Gap Up → Nth Min Up → Did Not Cross Below Day Open</option>
+                    <option value="gap_down_crossed">Gap Down → Nth Min Down → Crossed Above Day Open</option>
+                    <option value="gap_down_not_crossed">Gap Down → Nth Min Down → Did Not Cross Above Day Open</option>
+                </select>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <button class="btn btn-primary" onclick="showPreviousScenario()" id="prevButton">Previous</button>
+                <span id="scenarioCounter"></span>
+                <button class="btn btn-primary" onclick="showNextScenario()" id="nextButton">Next</button>
+            </div>
+            <div class="chart-container" style="position: relative; height: 800px; width: 100vw; margin-left: calc(-50vw + 50%); margin-right: calc(-50vw + 50%); margin-bottom: 2rem;">
+                <img id="chartImage" src="" alt="Scenario Chart" style="width: 100%; height: 100%; object-fit: contain; padding: 0 20px;">
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Store all scenario data
+    const scenarioData = {{ scenario_data.details | tojson }};
+    const scenarioCounts = {{ scenario_data.counts | tojson }};
+    
+    let currentType = 'gap_up_crossed';
+    let currentIndex = 0;
+
+    function updateScenarioCounter() {
+        const count = scenarioCounts[currentType] || 0;
+        document.getElementById('scenarioCounter').textContent = 
+            count > 0 ? `Scenario ${currentIndex + 1} of ${count}` : 'No scenarios available';
+        
+        // Update button states
+        document.getElementById('prevButton').disabled = currentIndex === 0;
+        document.getElementById('nextButton').disabled = currentIndex >= count - 1;
+    }
+
+    function showScenario() {
+        const scenarios = scenarioData[currentType];
+        if (!scenarios || scenarios.length === 0) {
+            console.error('No scenarios available for type:', currentType);
+            document.getElementById('chartImage').src = '';
+            updateScenarioCounter();
+            return;
+        }
+
+        const scenario = scenarios[currentIndex];
+        document.getElementById('chartImage').src = scenario.image_url;
+        updateScenarioCounter();
+    }
+
+    function showNextScenario() {
+        const count = scenarioCounts[currentType] || 0;
+        if (currentIndex < count - 1) {
+            currentIndex++;
+            showScenario();
+        }
+    }
+
+    function showPreviousScenario() {
+        if (currentIndex > 0) {
+            currentIndex--;
+            showScenario();
+        }
+    }
+
+    function switchScenarioType(type) {
+        if (scenarioData[type] && scenarioData[type].length > 0) {
+            currentType = type;
+            currentIndex = 0;
+            showScenario();
+        } else {
+            console.error('No data available for scenario type:', type);
+            document.getElementById('chartImage').src = '';
+            updateScenarioCounter();
+        }
+    }
+
+    // Initialize with first scenario
+    document.addEventListener('DOMContentLoaded', function() {
+        const select = document.getElementById('scenarioSelect');
+        if (select) {
+            switchScenarioType(select.value);
+        }
+    });
+    </script>
+    {% endif %}
+
+    {% if results %}
+    <div class="card mt-4">
+        <div class="card-body">
+            <h4>Analysis Results</h4>
+            
+            <!-- Gap Up Analysis -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5>Gap Up Analysis</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Scenario</th>
+                                    <th>Total Cases</th>
+                                    <th>Crossed Cases</th>
+                                    <th>Cross Percentage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Gap Up → Nth Min Up</td>
+                                    <td>{{ results.gap_up_nth_up.total }}</td>
+                                    <td>{{ results.gap_up_nth_up.crossed_down }}</td>
+                                    <td>{{ "%.2f"|format(results.gap_up_nth_up.crossed_percent) }}%</td>
+                                </tr>
+                                <tr>
+                                    <td>Gap Up → Nth Min Down</td>
+                                    <td>{{ results.gap_up_nth_down.total }}</td>
+                                    <td>{{ results.gap_up_nth_down.crossed_up }}</td>
+                                    <td>{{ "%.2f"|format(results.gap_up_nth_down.crossed_percent) }}%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gap Down Analysis -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5>Gap Down Analysis</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Scenario</th>
+                                    <th>Total Cases</th>
+                                    <th>Crossed Cases</th>
+                                    <th>Cross Percentage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Gap Down → Nth Min Up</td>
+                                    <td>{{ results.gap_down_nth_up.total }}</td>
+                                    <td>{{ results.gap_down_nth_up.crossed_down }}</td>
+                                    <td>{{ "%.2f"|format(results.gap_down_nth_up.crossed_percent) }}%</td>
+                                </tr>
+                                <tr>
+                                    <td>Gap Down → Nth Min Down</td>
+                                    <td>{{ results.gap_down_nth_down.total }}</td>
+                                    <td>{{ results.gap_down_nth_down.crossed_up }}</td>
+                                    <td>{{ "%.2f"|format(results.gap_down_nth_down.crossed_percent) }}%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Increments Analysis -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5>Price Increments Analysis</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Increment %</th>
+                                    <th>Gap Up Hit %</th>
+                                    <th>Gap Up Count</th>
+                                    <th>Gap Down Hit %</th>
+                                    <th>Gap Down Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for i in range(1, 11) %}
+                                <tr>
+                                    <td>{{ i }}%</td>
+                                    <td>{{ "%.2f"|format(results.gap_up_increments.get(i, 0)) }}%</td>
+                                    <td>{{ results.gap_up_increment_counts.get(i, 0) }}</td>
+                                    <td>{{ "%.2f"|format(results.gap_down_increments.get(i, 0)) }}%</td>
+                                    <td>{{ results.gap_down_increment_counts.get(i, 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-danger mt-4">
+        {{ error }}
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 
