@@ -167,7 +167,7 @@ def load_optimal_trades_into_dataframe():
 
 def _get_db_file_path(db_name):
     script_dir = os.path.dirname(__file__)
-    return os.path.join(script_dir, '../../database/ohlc_data', db_name)
+    return os.path.join(script_dir, '../database/ohlc_data', db_name)
 
 def _setup_database_connections(output_db_name, minute_optimal_db_name):
     output_db = _get_db_file_path(output_db_name)
