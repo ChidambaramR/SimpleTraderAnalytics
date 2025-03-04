@@ -15,6 +15,9 @@ class DayTrader(ABC):
         self.trade_logs = []
         self.total_trades = 0
         self.wins = 0
+        # Add stock-level tracking
+        self.stock_stats = {}  # Dictionary to store per-stock statistics
+        self.top_n = 10  # Default number of top stocks to track
         
     @abstractmethod
     def should_trade_stock(self, day_data, stock_name):
@@ -126,6 +129,12 @@ class DayTrader(ABC):
             for i in range(1, len(trading_days)):
                 current_date = pd.Timestamp(trading_days.iloc[i]['trade_date'])
                 prev_date = pd.Timestamp(trading_days.iloc[i-1]['trade_date'])
+
+                # Skip if gap between trading days is >= 4 days
+                if (current_date - prev_date).days >= 4:
+                    print(f"Skipping day {current_date} due to gap of {(current_date - prev_date).days} days")
+                    continue
+    
                 daily_pnl = 0
                 
                 # First pass: Find all tradeable stocks for this day
@@ -174,6 +183,8 @@ class DayTrader(ABC):
                             if trade['PNL'] > 0:
                                 self.wins += 1
                             daily_pnl += trade['PNL']
+                            # Update stock-level statistics
+                            self.update_stock_stats(trade)
                             
                     except Exception as e:
                         print(f"Error executing trades for stock {stock}: {str(e)}")
@@ -236,6 +247,9 @@ class DayTrader(ABC):
         
         percentile_90_daily_profit = profitable_days.quantile(0.9) if len(profitable_days) > 0 else 0
         percentile_90_daily_loss = abs(loss_days.quantile(0.1)) if len(loss_days) > 0 else 0
+
+        # Calculate stock-level metrics
+        stock_metrics = self.calculate_stock_level_metrics()
         
         return {
             'total_trades': self.total_trades,
@@ -254,7 +268,8 @@ class DayTrader(ABC):
             'avg_daily_profit': round(avg_daily_profit, 2),
             'avg_daily_loss': round(avg_daily_loss, 2),
             'percentile_90_daily_profit': round(percentile_90_daily_profit, 2),
-            'percentile_90_daily_loss': round(percentile_90_daily_loss, 2)
+            'percentile_90_daily_loss': round(percentile_90_daily_loss, 2),
+            'stock_stats': stock_metrics
         }
     
     def get_empty_results(self):
@@ -275,5 +290,90 @@ class DayTrader(ABC):
             'avg_daily_profit': 0,
             'avg_daily_loss': 0,
             'percentile_90_daily_profit': 0,
-            'percentile_90_daily_loss': 0
-        } 
+            'percentile_90_daily_loss': 0,
+            'stock_stats': {
+                'stocks': []
+            }
+        }
+
+    def update_stock_stats(self, trade):
+        """Update statistics for a specific stock"""
+        symbol = trade['Symbol']
+        if symbol not in self.stock_stats:
+            self.stock_stats[symbol] = {
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'total_pnl': 0,
+                'gap_up_trades': 0,
+                'gap_up_wins': 0,
+                'gap_up_losses': 0,
+                'gap_down_trades': 0,
+                'gap_down_wins': 0,
+                'gap_down_losses': 0,
+                'trades': []
+            }
+        
+        stats = self.stock_stats[symbol]
+        stats['total_trades'] += 1
+        stats['total_pnl'] += trade['PNL']
+        stats['trades'].append(trade)
+        
+        if trade['PNL'] > 0:
+            stats['wins'] += 1
+        else:
+            stats['losses'] += 1
+            
+        # Track gap direction success
+        if trade['Gap %'] > 0:  # Gap Up
+            stats['gap_up_trades'] += 1
+            if (trade['PNL'] > 0):
+                stats['gap_up_wins'] += 1
+            else:
+                stats['gap_up_losses'] += 1
+        else:  # Gap Down
+            stats['gap_down_trades'] += 1
+            if (trade['PNL'] > 0):
+                stats['gap_down_wins'] += 1
+            else:
+                stats['gap_down_losses'] += 1
+
+    def calculate_stock_level_metrics(self):
+        """Calculate stock-level metrics and return all stocks sorted by PNL"""
+        # Convert stock stats to DataFrame
+        stats_list = []
+        for symbol, stats in self.stock_stats.items():
+            win_ratio = (stats['wins'] / stats['total_trades'] * 100) if stats['total_trades'] > 0 else 0
+            loss_ratio = (stats['losses'] / stats['total_trades'] * 100) if stats['total_trades'] > 0 else 0
+            
+            stats_dict = {
+                'Symbol': symbol,
+                'Total Trades': stats['total_trades'],
+                'Wins': stats['wins'], 
+                'Win Ratio': round(win_ratio, 2),
+                'Losses': stats['losses'],
+                'Loss Ratio': round(loss_ratio, 2),
+                'Total PNL': stats['total_pnl'],
+                'Gap Up Trades': stats['gap_up_trades'],
+                'Gap Up Wins': stats['gap_up_wins'],
+                'Gap Up Losses': stats['gap_up_losses'],
+                'Gap Down Trades': stats['gap_down_trades'], 
+                'Gap Down Wins': stats['gap_down_wins'],
+                'Gap Down Losses': stats['gap_down_losses']
+            }
+            stats_list.append(stats_dict)
+            
+        stocks_df = pd.DataFrame(stats_list)
+        
+        # Sort by absolute PNL to show both winners and losers
+        stocks_df['Abs PNL'] = stocks_df['Total PNL'].abs()
+        sorted_stocks = stocks_df.nlargest(self.top_n, 'Abs PNL')
+        sorted_stocks = sorted_stocks.drop('Abs PNL', axis=1)  # Remove the temporary column
+        
+        return {
+            'stocks': sorted_stocks.to_dict(orient='records')
+        }
+
+    def set_top_n_stocks(self, n):
+        """Set the number of top stocks to track in each category"""
+        self.top_n = n 

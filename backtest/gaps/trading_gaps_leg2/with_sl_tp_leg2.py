@@ -177,14 +177,19 @@ class Leg2GapTrader(DayTrader):
 def _run_backtest(from_date, to_date, args={}):
     """Run backtest for both investment amounts."""
     try:
+        # Get top_n from args or use default
+        top_n = args.get('top_n', 100)
+        
         # Run for 1L
         trader_1L = Leg2GapTrader(initial_capital=100000, args=args)
+        trader_1L.set_top_n_stocks(top_n)
         results_1L = trader_1L.run_backtest(from_date, to_date)
         if 'error' in results_1L:
             return results_1L
             
         # Run for 10L
         trader_10L = Leg2GapTrader(initial_capital=1000000, args=args)
+        trader_10L.set_top_n_stocks(top_n)
         results_10L = trader_10L.run_backtest(from_date, to_date)
         if 'error' in results_10L:
             return results_10L
@@ -222,7 +227,9 @@ def _run_backtest(from_date, to_date, args={}):
             'percentile_90_daily_profit_1L': results_1L['percentile_90_daily_profit'],
             'percentile_90_daily_profit_10L': results_10L['percentile_90_daily_profit'],
             'percentile_90_daily_loss_1L': results_1L['percentile_90_daily_loss'],
-            'percentile_90_daily_loss_10L': results_10L['percentile_90_daily_loss']
+            'percentile_90_daily_loss_10L': results_10L['percentile_90_daily_loss'],
+            'stock_stats_1L': results_1L['stock_stats'],
+            'stock_stats_10L': results_10L['stock_stats']
         }
     except Exception as e:
         return {'error': f"Error in backtest: {str(e)}"}
