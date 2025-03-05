@@ -120,8 +120,12 @@ def rebuild_db_from_files():
                     ledger_path = os.path.join(day_path, 'ledger.csv')
                     if os.path.exists(ledger_path):
                         print(f"Found ledger file for {date_str}")
-                        df = pd.read_csv(ledger_path)
-                        store_ledger_data(df, date_str)
+                        try:
+                            df = pd.read_csv(ledger_path)
+                            store_ledger_data(df, date_str)
+                        except Exception as e:
+                            print(f"Error processing {ledger_path}: {str(e)}")
+                            continue
                     
                     # Process ticks files
                     for filename in os.listdir(day_path):

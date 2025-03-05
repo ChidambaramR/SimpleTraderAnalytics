@@ -77,8 +77,12 @@ def sync_data_from_s3():
                         manifest['ledger'][key] = etag
                         
                         # After reading ledger file:
-                        df = pd.read_csv(local_path)
-                        store_ledger_data(df, date_str)
+                        try:
+                            df = pd.read_csv(local_path)
+                            store_ledger_data(df, date_str)
+                        except Exception as e:
+                            logger.error(f"Error processing {local_path} - {e}")
+                            continue
         
         # Sync Logs files
         logs_prefix = 'SimpleTraderLogs/'

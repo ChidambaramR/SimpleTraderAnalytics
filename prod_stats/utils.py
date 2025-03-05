@@ -26,7 +26,7 @@ def get_ticks_data(filename, date, stock):
             for line in f:
                 try:
                     line = line.strip()
-                    if not line:  # Skip empty lines
+                    if not line or line == '[' or line == ']':  # Skip empty lines
                         continue
                         
                     # Handle datetime.datetime format with and without seconds
@@ -85,6 +85,7 @@ def get_ticks_data(filename, date, stock):
         df['high'] = df['ohlc'].apply(lambda x: x.get('high'))
         df['low'] = df['ohlc'].apply(lambda x: x.get('low'))
         df['close'] = df['ohlc'].apply(lambda x: x.get('close'))
+        df = df.rename(columns={'exchange_timestamp': 'ts'})
 
         return df
     except FileNotFoundError:
