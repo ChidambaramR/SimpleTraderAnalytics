@@ -214,7 +214,7 @@ def _fetch_minute_data(minute_db, stock, date):
     minute_cursor = minute_conn.cursor()
 
     # Properly quote the table name to handle special characters
-    query = f'SELECT ts, close FROM "{stock}" WHERE date(ts) = ? ORDER BY ts;'
+    query = f'SELECT ts, open, high, low, close FROM "{stock}" WHERE date(ts) = ? ORDER BY ts;'
     minute_cursor.execute(query, (date,))
     minute_data = minute_cursor.fetchall()
 
@@ -229,27 +229,40 @@ def _calculate_optimal_trade_times(minute_data, entry_window, exit_window, is_ga
     profit_percentage = 0
 
     # Find the best entry time
-    entry_candidates = [(ts, close) for ts, close in minute_data if entry_window[0] <= ts[11:19] <= entry_window[1]]
+    entry_candidates = [(ts, open_, high, low, close) for ts, open_, high, low, close in minute_data if entry_window[0] <= ts[11:19] <= entry_window[1]]
 
     # Find the best exit time
-    exit_candidates = [(ts, close) for ts, close in minute_data if exit_window[0] <= ts[11:19] <= exit_window[1]]
+    exit_candidates = [(ts, open_, high, low, close) for ts, open_, high, low, close in minute_data if exit_window[0] <= ts[11:19] <= exit_window[1]]
+
+    # Get the first minute data
+    first_min_data = minute_data[0]  # now in order: ts, open, high, low, close
 
     # Calculate the best entry and exit times
-    for entry_time, entry_price in entry_candidates:
-        for exit_time, exit_price in exit_candidates:
+    threshold_pct = 1
+    for entry_time, entry_open, entry_high, entry_low, entry_close in entry_candidates:
+        for exit_time, exit_open, exit_high, exit_low, exit_close in exit_candidates:
             if exit_time > entry_time:
                 if is_gap_up:
                     # For GAP UP, entry is sell and exit is buy
-                    profit = entry_price - exit_price
+                    # Check if first minute close > open and entry close > first minute open
+                    if (first_min_data[4] > first_min_data[1] and entry_close > first_min_data[1] and 
+                        (abs(entry_close - first_min_data[1]) / first_min_data[1]) * 100 > threshold_pct):
+                        profit = entry_close - exit_close
+                    else:
+                        continue
                 else:
                     # For GAP DOWN, entry is buy and exit is sell
-                    profit = exit_price - entry_price
+                    if (first_min_data[4] < first_min_data[1] and entry_close < first_min_data[1] and 
+                        (abs(entry_close - first_min_data[1]) / first_min_data[1]) * 100 > threshold_pct):
+                        profit = exit_close - entry_close
+                    else:
+                        continue
 
                 if profit > max_profit:
                     max_profit = profit
-                    profit_percentage = (profit / entry_price) * 100
-                    best_entry_time = entry_time
-                    best_exit_time = exit_time
+                    profit_percentage = (profit / entry_close) * 100
+                    best_entry_time = entry_time[11:19]
+                    best_exit_time = exit_time[11:19]
 
     return best_entry_time, best_exit_time, max_profit, profit_percentage
 
@@ -264,9 +277,9 @@ def _insert_optimal_trade(minute_optimal_cursor, stock, gap_type, date, entry_ty
 # Execute the function if the script is run as the main module
 if __name__ == "__main__":
     # Uncomment the following lines to generate day_wise_gaps.db and minute_wise_optimal.db again
-    # find_and_store_daily_gaps()
-    # find_optimum_trade_time_for_gapup()
-    # find_optimum_trade_time_for_gapdown()
+    find_and_store_daily_gaps()
+    find_optimum_trade_time_for_gapup()
+    find_optimum_trade_time_for_gapdown()
     
     # Convert the optimal_trades DB into a pandas dataframe
     df = load_optimal_trades_into_dataframe()
