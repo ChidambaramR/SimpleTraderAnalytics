@@ -278,11 +278,11 @@ def _insert_optimal_trade(minute_optimal_cursor, stock, gap_type, date, entry_ty
 if __name__ == "__main__":
     # Uncomment the following lines to generate day_wise_gaps.db and minute_wise_optimal.db again
     find_and_store_daily_gaps()
-    find_optimum_trade_time_for_gapup()
-    find_optimum_trade_time_for_gapdown()
+    # find_optimum_trade_time_for_gapup()
+    # find_optimum_trade_time_for_gapdown()
     
-    # Convert the optimal_trades DB into a pandas dataframe
-    df = load_optimal_trades_into_dataframe()
-    print(df.head())
+    # # Convert the optimal_trades DB into a pandas dataframe
+    # df = load_optimal_trades_into_dataframe()
+    # print(df.head())
 
     # TODO: Further analysis

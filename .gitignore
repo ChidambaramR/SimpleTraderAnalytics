@@ -16,6 +16,7 @@ prod_stats/data/*
 prod_stats/manifest.json
 keys.json
 static/scenario_charts/*
+analysis/data_dump/*
 
 # Distribution / packaging
 .Python
