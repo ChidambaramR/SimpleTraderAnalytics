@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from ..utils.fee_calculator import calculate_fees
 from database.utils.db_utils import get_db_and_tables
 
+
 class DayTrader(ABC):
     def __init__(self, initial_capital=100000):
         self.initial_capital = initial_capital
@@ -61,7 +62,9 @@ class DayTrader(ABC):
         try:
             # If no stock list provided, use all stocks from day.db
             if stock_list is None:
-                stock_list = day_tables['name'].tolist()
+                with open('stocks_allowed_for_intraday.txt', 'r') as f:
+                    stock_list = [line.strip() for line in f.readlines()]
+            
             
             # Convert dates
             from_date = f"{from_date} 00:00:00"
@@ -90,6 +93,7 @@ class DayTrader(ABC):
                 df.set_index('ts', inplace=True)
                 daily_data[stock] = df
             
+
             return trading_days, daily_data
             
         finally:

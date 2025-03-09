@@ -39,13 +39,6 @@
                        value="{{ request.args.get('exit_time', '09:16') }}" 
                        pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" required>
             </div>
-            <div class="col-md-2">
-                <div class="form-check mt-4">
-                    <input class="form-check-input" type="checkbox" id="force_run" name="force_run" 
-                           value="true" {% if request.args.get('force_run') == 'true' %}checked{% endif %}>
-                    <label class="form-check-label" for="force_run">Force Rerun</label>
-                </div>
-            </div>
             <div class="col-md-1 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary">Run Backtest</button>
             </div>
