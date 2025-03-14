@@ -1,6 +1,7 @@
 import sqlite3
 import pandas as pd
 import numpy as np
+import sys
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 
@@ -793,8 +794,9 @@ def predict_with_lstm(models, day_data):
             padded_sequence[:len(sequence)] = sequence
             sequence = padded_sequence
         
-        # Reshape to match the input shape of the model (1, 1, 5)
-        X_pred = sequence[:5].reshape(1, 1, 5)
+        # Reshape to match the input shape of the model (1, 5, 5)
+        # The model expects shape (batch_size, time_steps, features)
+        X_pred = sequence.reshape(1, 5, 5)
         
         # Make predictions
         try:
@@ -1248,6 +1250,32 @@ def time_to_decimal(time_str):
     # Normalize to 0-1 range for 9:15 (555) to 15:30 (930) = 375 minutes
     return (total_mins - 555) / 375
 
+def convert_numpy_types(obj):
+    """
+    Convert numpy types to native Python types for JSON serialization
+    
+    Args:
+        obj: The object to convert
+        
+    Returns:
+    - Object with numpy types converted to Python native types
+    """
+    if isinstance(obj, np.ndarray):
+        return [convert_numpy_types(x) for x in obj.tolist()]
+    elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64, 
+                        np.uint8, np.uint16, np.uint32, np.uint64)):
+        return int(obj)
+    elif isinstance(obj, (np.float16, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(i) for i in obj]
+    else:
+        return obj
+
 def serialize_results(stock, summary, evaluation):
     """
     Serialize LSTM results to files.
@@ -1264,12 +1292,8 @@ def serialize_results(stock, summary, evaluation):
     # Add timestamp
     summary['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    # Convert any numpy types to Python native types
-    for key in summary:
-        if isinstance(summary[key], (np.float32, np.float64)):
-            summary[key] = float(summary[key])
-        elif isinstance(summary[key], (np.int32, np.int64)):
-            summary[key] = int(summary[key])
+    # Convert any numpy types to Python native types for JSON serialization
+    summary = convert_numpy_types(summary)
     
     # Add evaluation metrics if available
     if not evaluation.empty:
@@ -1303,8 +1327,50 @@ if __name__ == "__main__":
     if dataset is None:
         print(f"No valid dataset for stock {STOCK}. Exiting.")
         sys.exit(1)
+    
+    # Get the most recent trading day for predictions
+    gap_days = load_gap_days(STOCK)
+    if not gap_days.empty:
+        most_recent_day = gap_days.iloc[-1]['date']
         
-    # Get summary
+        # Load data for the most recent day for prediction
+        most_recent_data = load_minute_data(STOCK, most_recent_day)
+        
+        # Extract time if not already present
+        if 'time' not in most_recent_data.columns and 'ts' in most_recent_data.columns:
+            most_recent_data['time'] = most_recent_data['ts'].dt.strftime('%H:%M:%S')
+        
+        # Make predictions
+        print(f"\nMaking predictions for {STOCK} on {most_recent_day}...")
+        if dataset.get('models') is not None and not most_recent_data.empty:
+            predictions = predict_with_lstm(dataset['models'], most_recent_data)
+            # Convert numpy types to Python native types for JSON serialization
+            predictions = convert_numpy_types(predictions)
+            
+            # Print predictions
+            print(f"Trading strategy predictions:")
+            print(f"  Position: {predictions['position']} (confidence: {predictions['confidence']:.2f})")
+            print(f"  Entry time: {predictions['entry_time']}")
+            print(f"  Exit time: {predictions['exit_time']}")
+            print(f"  Stop loss: {predictions['stop_loss_pct']:.2f}%")
+            print(f"  Take profit: {predictions['take_profit_pct']:.2f}%")
+        else:
+            print("No models available or data empty, skipping predictions")
+            predictions = {
+                'entry_time': '09:17:00',
+                'exit_time': '15:15:00',
+                'stop_loss_pct': 2.0,
+                'take_profit_pct': 3.0,
+                'position': 'BUY',
+                'confidence': 0.5,
+                'note': 'Default values due to missing models or data'
+            }
+    else:
+        print(f"No gap days found for {STOCK}, skipping predictions")
+        predictions = None
+        most_recent_day = None
+    
+    # Get summary with predictions
     summary = {
         'stock': STOCK,
         'dataset_size': len(dataset.get('sequences', [])),
@@ -1312,7 +1378,41 @@ if __name__ == "__main__":
         'model_profit': dataset.get('profit', 0.0)
     }
     
+    # Add prediction information to summary
+    if predictions is not None:
+        summary['predictions'] = {
+            'date': most_recent_day,
+            'position_type': predictions['position'],
+            'position_confidence': float(predictions['confidence']),
+            'entry_time': predictions['entry_time'],
+            'exit_time': predictions['exit_time'],
+            'stop_loss_percentage': float(predictions['stop_loss_pct']),
+            'take_profit_percentage': float(predictions['take_profit_pct'])
+        }
+    
     # Serialize results
     print("Serializing LSTM results to files...")
     serialize_results(STOCK, summary, dataset.get('evaluation', pd.DataFrame()))
     print("All LSTM results successfully serialized!")
+    
+    # If predictions available, also save them separately
+    if predictions is not None:
+        prediction_dir = os.path.join('analysis', 'data_dump', STOCK, 'predictions')
+        os.makedirs(prediction_dir, exist_ok=True)
+        
+        # Format date for filename
+        date_str = most_recent_day.replace('-', '')
+        prediction_path = os.path.join(prediction_dir, f"{STOCK}_prediction_{date_str}.json")
+        
+        # Prepare prediction data with numpy types converted to Python native types
+        prediction_data = convert_numpy_types({
+            'stock': STOCK,
+            'date': most_recent_day,
+            'prediction': predictions,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        
+        with open(prediction_path, 'w') as f:
+            json.dump(prediction_data, f, indent=4)
+        
+        print(f"Prediction saved to {prediction_path}")
