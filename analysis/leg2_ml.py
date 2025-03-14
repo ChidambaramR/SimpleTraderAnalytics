@@ -23,7 +23,7 @@ if gpus:
     except RuntimeError as e:
         print(e)
 
-STOCK = 'TTML'
+STOCK = 'INDIGO'
 
 # Create output directory path
 OUTPUT_DIR = f'analysis/data_dump/{STOCK}'
@@ -41,10 +41,35 @@ def _determine_minute_db(stock):
 GAPS_DB_PATH = '../database/ohlc_data/day_wise_gaps.db'
 MINUTE_DB_PATH = f'../database/ohlc_data/{_determine_minute_db(STOCK)}'
 
+# Add new utility functions at the top
+def _create_db_connection(db_path):
+    """Create and return a database connection."""
+    script_dir = os.path.dirname(__file__)
+    return sqlite3.connect(os.path.join(script_dir, db_path))
+
+def _normalize_data(data, numerical_cols):
+    """Normalize numerical columns in a DataFrame."""
+    for col in numerical_cols:
+        if col in data.columns:
+            col_mean = data[col].mean()
+            col_std = data[col].std()
+            data[f'{col}_norm'] = 0 if col_std == 0 else (data[col] - col_mean) / col_std
+        else:
+            data[f'{col}_norm'] = 0
+    return data
+
+def _pad_sequence(sequence, target_shape):
+    """Pad a sequence to match the target shape."""
+    padded = np.zeros(target_shape)
+    for i in range(min(sequence.shape[0], target_shape[0])):
+        for j in range(min(sequence.shape[1], target_shape[1])):
+            for k in range(min(sequence.shape[2], target_shape[2])):
+                padded[i, j, k] = sequence[i, j, k]
+    return padded
+
 # Function to load gap days for a specific stock
 def load_gap_days(stock):
-    script_dir = os.path.dirname(__file__)
-    conn = sqlite3.connect(os.path.join(script_dir, GAPS_DB_PATH))
+    conn = _create_db_connection(GAPS_DB_PATH)
     query = f"SELECT date, gaptype, pctdiff FROM gaps WHERE stock='{stock}' ORDER BY date"
     gap_days = pd.read_sql_query(query, conn)
     conn.close()
@@ -52,92 +77,40 @@ def load_gap_days(stock):
 
 # Function to load minute data for a specific day
 def load_minute_data(stock, date):
-    script_dir = os.path.dirname(__file__)
-    conn = sqlite3.connect(os.path.join(script_dir, MINUTE_DB_PATH))
-    # Get data for the whole trading day (9:15 AM to 3:30 PM)
+    conn = _create_db_connection(MINUTE_DB_PATH)
     query = f"SELECT * FROM {stock} WHERE ts LIKE '{date}%' ORDER BY ts"
     minute_data = pd.read_sql_query(query, conn)
     conn.close()
-    
-    # Convert timestamp to datetime
     minute_data['ts'] = pd.to_datetime(minute_data['ts'])
-    
     return minute_data
 
 # Function to load minute data with sequence for LSTM
 def load_minute_sequences(stock, date):
-    script_dir = os.path.dirname(__file__)
-    conn = sqlite3.connect(os.path.join(script_dir, MINUTE_DB_PATH))
-    
-    # Get data for the whole trading day (9:15 AM to 3:30 PM)
-    query = f"SELECT * FROM {stock} WHERE ts LIKE '{date}%' ORDER BY ts"
-    minute_data = pd.read_sql_query(query, conn)
-    conn.close()
-    
-    # Convert timestamp to datetime
-    minute_data['ts'] = pd.to_datetime(minute_data['ts'])
-    
-    # Normalize prices for sequence data
+    minute_data = load_minute_data(stock, date)
     if not minute_data.empty:
-        # Create a copy of the original data for later reference
         minute_data_orig = minute_data.copy()
-        
-        # Get the first open price for normalization
         first_open = minute_data.iloc[0]['open']
-        
-        # Normalize OHLC data relative to first open price
         for col in ['open', 'high', 'low', 'close']:
             minute_data[f'{col}_norm'] = minute_data[col] / first_open - 1.0
-        
-        # Normalize volume using min-max within the day
-        min_vol = minute_data['volume'].min()
-        max_vol = minute_data['volume'].max()
-        if max_vol > min_vol:
-            minute_data['volume_norm'] = (minute_data['volume'] - min_vol) / (max_vol - min_vol)
-        else:
-            minute_data['volume_norm'] = 0
-        
-        # Store normalization factors for later denormalization
-        minute_data.attrs['first_open'] = first_open
-        minute_data.attrs['min_vol'] = min_vol
-        minute_data.attrs['max_vol'] = max_vol
-        
-        # Add original data as attribute
-        minute_data.attrs['original_data'] = minute_data_orig
-    
+        minute_data = _normalize_data(minute_data, ['volume'])
+        minute_data.attrs.update({
+            'first_open': first_open,
+            'original_data': minute_data_orig
+        })
     return minute_data
 
 # Function to create sequences for LSTM
 def create_lstm_sequences(minute_data, sequence_length=5):
-    """
-    Create sequences of length sequence_length from minute data
-    for LSTM input.
-    """
-    # Filter to only essential columns
     cols = ['open_norm', 'high_norm', 'low_norm', 'close_norm', 'volume_norm']
-    
-    # Ensure all required columns exist
     for col in cols:
         if col not in minute_data.columns:
-            print(f"Warning: Column {col} not found in minute data")
-            # Create missing column with zeros
             minute_data[col] = 0
-    
     data = minute_data[cols].values
-    
-    # Ensure we have enough data for the sequence length
     if len(data) < sequence_length:
-        print(f"Warning: Not enough data points ({len(data)}) for sequence length {sequence_length}")
-        # Pad with zeros to reach the required sequence length
         padding_needed = sequence_length - len(data)
-        padding = np.zeros((padding_needed, len(cols)))
-        data = np.vstack((data, padding))
-    
-    sequences = []
-    for i in range(len(data) - sequence_length + 1):
-        sequences.append(data[i:i+sequence_length])
-    
-    return np.array(sequences) if sequences else np.array([[]])  # Return at least an empty sequence with correct shape
+        data = np.vstack((data, np.zeros((padding_needed, len(cols)))))
+    sequences = [data[i:i+sequence_length] for i in range(len(data) - sequence_length + 1)]
+    return np.array(sequences) if sequences else np.array([[]])
 
 def extract_intraday_lstm_features(daily_data, day):
     """
@@ -214,41 +187,42 @@ def extract_intraday_lstm_features(daily_data, day):
             sequence = entry_features[:5]
             sequences = np.array([sequence])  # Shape should be (1, 5, 5)
             
-            # Extract features for trading strategy
-            features = {
-                'day_open': day_data['open'].iloc[0] if 'open' in day_data.columns else 0,
-                'day_high': day_data['high'].max() if 'high' in day_data.columns else 0,
-                'day_low': day_data['low'].min() if 'low' in day_data.columns else 0,
-                'day_close': day_data['close'].iloc[-1] if 'close' in day_data.columns else 0,
-                'day_volume': day_data['volume'].sum() if 'volume' in day_data.columns else 0,
-                
-                # Entry window features
-                'entry_window_open': entry_window['open'].iloc[0] if 'open' in entry_window.columns else 0,
-                'entry_window_high': entry_window['high'].max() if 'high' in entry_window.columns else 0,
-                'entry_window_low': entry_window['low'].min() if 'low' in entry_window.columns else 0,
-                'entry_window_close': entry_window['close'].iloc[-1] if 'close' in entry_window.columns else 0,
-                'entry_window_volume': entry_window['volume'].sum() if 'volume' in entry_window.columns else 0,
-                
-                # Gap information
-                'gap_percentage': 0  # Default, will be updated outside this function
-            }
+            # Get gap type from the daily data
+            gap_type = daily_data['gaptype'].iloc[0] if 'gaptype' in daily_data.columns else None
+            
+            # Determine position type based on gap
+            if gap_type == 'GAP_UP':
+                position_type = "BUY"
+            elif gap_type == 'GAP_DOWN':
+                position_type = "SELL"
+            else:
+                position_type = "BUY"  # Default to BUY if gap type is unknown
             
             # For demo purposes, create simulated trading parameters 
-            # (these would normally come from simulation or optimization)
-            entry_time = "09:17:00"
+            entry_time = "09:17:00"  # Fixed value
             exit_time = "15:15:00"
             stop_loss_pct = 2.0
             take_profit_pct = 3.0
-            position_type = "BUY"
             
-            # Return in the expected format for LSTM model
+            # Store entry and exit prices
+            entry_price = entry_window['open'].iloc[0]
+            exit_price = day_data['close'].iloc[-1]
+            
+            # Calculate exit position (always opposite)
+            exit_position = 'SELL' if position_type == 'BUY' else 'BUY'
+            
             return {
                 'sequences': sequences,
                 'entry_times': [time_to_decimal(entry_time)],
                 'exit_times': [time_to_decimal(exit_time)],
                 'stop_losses': [stop_loss_pct],
                 'take_profits': [take_profit_pct],
-                'position_types': [1.0 if position_type == 'BUY' else 0.0]
+                'position_types': [1.0 if position_type == 'BUY' else 0.0],
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'gap_type': gap_type,
+                'entry_position': position_type,
+                'exit_position': exit_position
             }
         else:
             print(f"Not enough data points for sequence on day {day}")
@@ -348,7 +322,6 @@ def build_lstm_models(dataset):
         
         # Extract sequences and targets from list of dictionaries
         sequences = []
-        entry_times = []
         exit_times = []
         stop_losses = []
         take_profits = []
@@ -364,7 +337,6 @@ def build_lstm_models(dataset):
                 continue
             
             sequences.append(item['sequences'])
-            entry_times.extend(item['entry_times'])
             exit_times.extend(item['exit_times'])
             stop_losses.extend(item['stop_losses'])
             take_profits.extend(item['take_profits'])
@@ -373,7 +345,6 @@ def build_lstm_models(dataset):
         # Combine into a single dataset
         dataset = {
             'sequences': sequences,
-            'entry_times': np.array(entry_times),
             'exit_times': np.array(exit_times),
             'stop_losses': np.array(stop_losses),
             'take_profits': np.array(take_profits),
@@ -392,8 +363,8 @@ def build_lstm_models(dataset):
         print("Error: Dataset contains empty sequences list. Cannot build models.")
         return None
     
-    # For dictionary format, check if required keys exist
-    required_keys = ['entry_times', 'exit_times', 'stop_losses', 'take_profits', 'position_types']
+    # Remove entry_time from required keys
+    required_keys = ['exit_times', 'stop_losses', 'take_profits', 'position_types']
     for key in required_keys:
         if key not in dataset:
             print(f"Error: Dataset is missing required key '{key}'. Cannot build models.")
@@ -403,9 +374,8 @@ def build_lstm_models(dataset):
     try:
         print(f"Building LSTM models with {len(dataset['sequences'])} samples")
         
-        # Extract the sequences and targets
+        # Extract the sequences and targets (remove entry_times)
         sequences = dataset['sequences']
-        entry_times = dataset['entry_times']
         exit_times = dataset['exit_times']
         stop_losses = dataset['stop_losses']
         take_profits = dataset['take_profits']
@@ -420,51 +390,13 @@ def build_lstm_models(dataset):
         
         for seq in sequences:
             try:
-                # Skip invalid sequences
-                if not hasattr(seq, 'shape'):
-                    print(f"Skipping sequence with no shape attribute: {type(seq)}")
-                    continue
-                
-                # Handle different sequence shapes
                 if len(seq.shape) == 3:
-                    # If shape is already (batch, time_steps, features)
-                    if seq.shape[1] >= 5 and seq.shape[2] >= 5:
-                        # Use first batch item, first 5 timesteps, first 5 features
-                        reshaped_seq = seq[0:1, :5, :5]
-                    else:
-                        print(f"Sequence shape too small: {seq.shape}, padding")
-                        # Create padded sequence
-                        padded = np.zeros((1, 5, 5))
-                        padded[0, :min(5, seq.shape[1]), :min(5, seq.shape[2])] = seq[0, :min(5, seq.shape[1]), :min(5, seq.shape[2])]
-                        reshaped_seq = padded
+                    reshaped_seq = _pad_sequence(seq[0:1, :5, :5], (1, 5, 5))
                 elif len(seq.shape) == 2:
-                    # If shape is (time_steps, features)
-                    if seq.shape[0] >= 5 and seq.shape[1] >= 5:
-                        # Add batch dimension
-                        reshaped_seq = np.expand_dims(seq[:5, :5], axis=0)
-                    else:
-                        print(f"Sequence shape too small: {seq.shape}, padding")
-                        # Create padded sequence
-                        padded = np.zeros((1, 5, 5))
-                        padded[0, :min(5, seq.shape[0]), :min(5, seq.shape[1])] = seq[:min(5, seq.shape[0]), :min(5, seq.shape[1])]
-                        reshaped_seq = padded
+                    reshaped_seq = _pad_sequence(np.expand_dims(seq[:5, :5], axis=0), (1, 5, 5))
                 else:
-                    print(f"Unexpected sequence shape: {seq.shape}, creating default")
-                    # Create default sequence
                     reshaped_seq = np.zeros((1, 5, 5))
-                
-                # Verify shape is correct before adding
-                if reshaped_seq.shape == (1, 5, 5):
-                    reshaped_sequences.append(reshaped_seq)
-                else:
-                    print(f"Unexpected reshaped sequence shape: {reshaped_seq.shape}, fixing")
-                    # Force reshape if needed
-                    fixed_shape = np.zeros((1, 5, 5))
-                    for i in range(min(reshaped_seq.shape[0], 1)):
-                        for j in range(min(reshaped_seq.shape[1], 5)):
-                            for k in range(min(reshaped_seq.shape[2], 5)):
-                                fixed_shape[i, j, k] = reshaped_seq[i, j, k]
-                    reshaped_sequences.append(fixed_shape)
+                reshaped_sequences.append(reshaped_seq)
             except Exception as e:
                 print(f"Error reshaping sequence: {e}")
                 continue
@@ -480,250 +412,173 @@ def build_lstm_models(dataset):
             X = np.concatenate(reshaped_sequences, axis=0)
             print(f"Reshaped X shape: {X.shape}")
             
-            # Make sure all targets have the same length as the reshaped sequences
-            n_samples = X.shape[0]
+            # Remove entry_time target handling
+            # Convert targets to arrays (remove y_entry)
+            y_exit = np.array(exit_times).reshape(-1, 1)
+            y_sl = np.array(stop_losses).reshape(-1, 1)
+            y_tp = np.array(take_profits).reshape(-1, 1)
+            y_pos = np.array(position_types).reshape(-1, 1)
             
-            # Convert target lengths to match sequence count
-            if len(entry_times) != n_samples:
-                print(f"Warning: entry_times length ({len(entry_times)}) doesn't match sequences count ({n_samples})")
-                if len(entry_times) > n_samples:
-                    entry_times = entry_times[:n_samples]
-                else:
-                    # Pad with default values
-                    entry_times = np.pad(entry_times, (0, n_samples - len(entry_times)), 'constant', constant_values=0.28)
+            # Create train/validation splits (remove entry_time split)
+            X_train, X_val, _, _ = train_test_split(
+                X, y_exit, test_size=0.2, random_state=42
+            )
+            _, _, y_exit_train, y_exit_val = train_test_split(
+                X, y_exit, test_size=0.2, random_state=42
+            )
+            _, _, y_sl_train, y_sl_val = train_test_split(
+                X, y_sl, test_size=0.2, random_state=42
+            )
+            _, _, y_tp_train, y_tp_val = train_test_split(
+                X, y_tp, test_size=0.2, random_state=42
+            )
+            _, _, y_pos_train, y_pos_val = train_test_split(
+                X, y_pos, test_size=0.2, random_state=42
+            )
             
-            if len(exit_times) != n_samples:
-                print(f"Warning: exit_times length ({len(exit_times)}) doesn't match sequences count ({n_samples})")
-                if len(exit_times) > n_samples:
-                    exit_times = exit_times[:n_samples]
-                else:
-                    # Pad with default values
-                    exit_times = np.pad(exit_times, (0, n_samples - len(exit_times)), 'constant', constant_values=0.5)
+            # LSTM for exit time
+            print("Training exit time LSTM model...")
+            exit_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
+            exit_model.summary()
             
-            if len(stop_losses) != n_samples:
-                print(f"Warning: stop_losses length ({len(stop_losses)}) doesn't match sequences count ({n_samples})")
-                if len(stop_losses) > n_samples:
-                    stop_losses = stop_losses[:n_samples]
-                else:
-                    # Pad with default values
-                    stop_losses = np.pad(stop_losses, (0, n_samples - len(stop_losses)), 'constant', constant_values=2.0)
+            try:
+                exit_model.fit(
+                    X_train, y_exit_train,
+                    epochs=50,
+                    batch_size=8,
+                    validation_data=(X_val, y_exit_val),
+                    verbose=2,
+                    callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
+                )
+            except Exception as e:
+                print(f"Error training exit model: {str(e)}")
+                # If model training fails, create a simple model that returns a default value
+                print("Creating simple fallback model with default value")
+                # Create a simple model that flattens the input and then outputs a constant
+                exit_model = Sequential()
+                exit_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
+                exit_model.add(Dense(1, use_bias=True, trainable=False))
+                # We won't actually use the weights, but we'll initialize them
+                exit_model.compile(loss='mse', optimizer='adam')
+                # Dummy fit to initialize the model
+                exit_model.fit(
+                    X_train[:1], np.array([[0.5]]),
+                    epochs=1, verbose=0
+                )
             
-            if len(take_profits) != n_samples:
-                print(f"Warning: take_profits length ({len(take_profits)}) doesn't match sequences count ({n_samples})")
-                if len(take_profits) > n_samples:
-                    take_profits = take_profits[:n_samples]
-                else:
-                    # Pad with default values
-                    take_profits = np.pad(take_profits, (0, n_samples - len(take_profits)), 'constant', constant_values=3.0)
+            # LSTM for stop loss
+            print("Training stop loss LSTM model...")
+            sl_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
+            sl_model.summary()
             
-            if len(position_types) != n_samples:
-                print(f"Warning: position_types length ({len(position_types)}) doesn't match sequences count ({n_samples})")
-                if len(position_types) > n_samples:
-                    position_types = position_types[:n_samples]
-                else:
-                    # Pad with default values
-                    position_types = np.pad(position_types, (0, n_samples - len(position_types)), 'constant', constant_values=0.5)
+            try:
+                sl_model.fit(
+                    X_train, y_sl_train,
+                    epochs=50,
+                    batch_size=8,
+                    validation_data=(X_val, y_sl_val),
+                    verbose=2,
+                    callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
+                )
+            except Exception as e:
+                print(f"Error training stop loss model: {str(e)}")
+                # If model training fails, create a simple model that returns a default value
+                print("Creating simple fallback model with default value")
+                # Create a simple model that flattens the input and then outputs a constant
+                sl_model = Sequential()
+                sl_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
+                sl_model.add(Dense(1, use_bias=True, trainable=False))
+                # We won't actually use the weights, but we'll initialize them
+                sl_model.compile(loss='mse', optimizer='adam')
+                # Dummy fit to initialize the model
+                sl_model.fit(
+                    X_train[:1], np.array([[2.0]]),
+                    epochs=1, verbose=0
+                )
+            
+            # LSTM for take profit
+            print("Training take profit LSTM model...")
+            tp_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
+            tp_model.summary()
+            
+            try:
+                tp_model.fit(
+                    X_train, y_tp_train,
+                    epochs=50,
+                    batch_size=8,
+                    validation_data=(X_val, y_tp_val),
+                    verbose=2,
+                    callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
+                )
+            except Exception as e:
+                print(f"Error training take profit model: {str(e)}")
+                # If model training fails, create a simple model that returns a default value
+                print("Creating simple fallback model with default value")
+                # Create a simple model that flattens the input and then outputs a constant
+                tp_model = Sequential()
+                tp_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
+                tp_model.add(Dense(1, use_bias=True, trainable=False))
+                # We won't actually use the weights, but we'll initialize them
+                tp_model.compile(loss='mse', optimizer='adam')
+                # Dummy fit to initialize the model
+                tp_model.fit(
+                    X_train[:1], np.array([[3.0]]),
+                    epochs=1, verbose=0
+                )
+            
+            # Store models in the dictionary (remove entry_time)
+            models['exit_time'] = exit_model
+            models['stop_loss'] = sl_model
+            models['take_profit'] = tp_model
+            
+            # Train for position type (buy/sell)
+            print("Training position type model...")
+            pos_model = Sequential()
+            pos_model.add(LSTM(32, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False))
+            pos_model.add(Dense(16, activation='relu'))
+            pos_model.add(Dense(1, activation='sigmoid'))
+            pos_model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=0.001), metrics=['accuracy'])
+            pos_model.summary()
+            
+            try:
+                pos_model.fit(
+                    X_train, y_pos_train,
+                    epochs=50,
+                    batch_size=8,
+                    validation_data=(X_val, y_pos_val),
+                    verbose=2,
+                    callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
+                )
+            except Exception as e:
+                print(f"Error training position type model: {str(e)}")
+                # If model training fails, create a simple model that returns a default value
+                print("Creating simple fallback model with default value")
+                # Create a simple model that flattens the input and then outputs a constant
+                pos_model = Sequential()
+                pos_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
+                pos_model.add(Dense(1, activation='sigmoid', use_bias=True, trainable=False))
+                # We won't actually use the weights, but we'll initialize them
+                pos_model.compile(loss='binary_crossentropy', optimizer='adam')
+                # Dummy fit to initialize the model
+                pos_model.fit(
+                    X_train[:1], np.array([[0.5]]),
+                    epochs=1, verbose=0
+                )
+            
+            models['position_type'] = pos_model
+            
+            return models
         except Exception as e:
             print(f"Error stacking sequences: {e}")
             # Create dummy data for testing
             print("Creating dummy data for testing")
             n_samples = 10  # Use a small number for testing
             X = np.zeros((n_samples, 5, 5))
-            entry_times = np.array([0.28] * n_samples)
             exit_times = np.array([0.5] * n_samples)
             stop_losses = np.array([2.0] * n_samples)
             take_profits = np.array([3.0] * n_samples)
             position_types = np.array([0.5] * n_samples)
-        
-        # Convert targets to arrays
-        y_entry = np.array(entry_times).reshape(-1, 1)
-        y_exit = np.array(exit_times).reshape(-1, 1)
-        y_sl = np.array(stop_losses).reshape(-1, 1)
-        y_tp = np.array(take_profits).reshape(-1, 1)
-        y_pos = np.array(position_types).reshape(-1, 1)
-        
-        # Create train/validation splits
-        X_train, X_val, y_entry_train, y_entry_val = train_test_split(
-            X, y_entry, test_size=0.2, random_state=42
-        )
-        _, _, y_exit_train, y_exit_val = train_test_split(
-            X, y_exit, test_size=0.2, random_state=42
-        )
-        _, _, y_sl_train, y_sl_val = train_test_split(
-            X, y_sl, test_size=0.2, random_state=42
-        )
-        _, _, y_tp_train, y_tp_val = train_test_split(
-            X, y_tp, test_size=0.2, random_state=42
-        )
-        _, _, y_pos_train, y_pos_val = train_test_split(
-            X, y_pos, test_size=0.2, random_state=42
-        )
-        
-        print(f"Training shapes - X: {X_train.shape}, y_entry: {y_entry_train.shape}")
-        
-        # LSTM for entry time
-        print("Training entry time LSTM model...")
-        entry_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
-        entry_model.summary()
-        
-        try:
-            entry_model.fit(
-                X_train, y_entry_train,
-                epochs=50,
-                batch_size=8,
-                validation_data=(X_val, y_entry_val),
-                verbose=2,
-                callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
-            )
-        except Exception as e:
-            print(f"Error training entry model: {str(e)}")
-            # If model training fails, create a simple model that returns a default value
-            print("Creating simple fallback model with default value")
-            # Create a simple model that flattens the input and then outputs a constant
-            entry_model = Sequential()
-            entry_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
-            entry_model.add(Dense(1, use_bias=True, trainable=False))
-            # We won't actually use the weights, but we'll initialize them
-            entry_model.compile(loss='mse', optimizer='adam')
-            # Dummy fit to initialize the model
-            entry_model.fit(
-                X_train[:1], np.array([[0.28]]),
-                epochs=1, verbose=0
-            )
-        
-        # LSTM for exit time
-        print("Training exit time LSTM model...")
-        exit_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
-        exit_model.summary()
-        
-        try:
-            exit_model.fit(
-                X_train, y_exit_train,
-                epochs=50,
-                batch_size=8,
-                validation_data=(X_val, y_exit_val),
-                verbose=2,
-                callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
-            )
-        except Exception as e:
-            print(f"Error training exit model: {str(e)}")
-            # If model training fails, create a simple model that returns a default value
-            print("Creating simple fallback model with default value")
-            # Create a simple model that flattens the input and then outputs a constant
-            exit_model = Sequential()
-            exit_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
-            exit_model.add(Dense(1, use_bias=True, trainable=False))
-            # We won't actually use the weights, but we'll initialize them
-            exit_model.compile(loss='mse', optimizer='adam')
-            # Dummy fit to initialize the model
-            exit_model.fit(
-                X_train[:1], np.array([[0.5]]),
-                epochs=1, verbose=0
-            )
-        
-        # LSTM for stop loss
-        print("Training stop loss LSTM model...")
-        sl_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
-        sl_model.summary()
-        
-        try:
-            sl_model.fit(
-                X_train, y_sl_train,
-                epochs=50,
-                batch_size=8,
-                validation_data=(X_val, y_sl_val),
-                verbose=2,
-                callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
-            )
-        except Exception as e:
-            print(f"Error training stop loss model: {str(e)}")
-            # If model training fails, create a simple model that returns a default value
-            print("Creating simple fallback model with default value")
-            # Create a simple model that flattens the input and then outputs a constant
-            sl_model = Sequential()
-            sl_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
-            sl_model.add(Dense(1, use_bias=True, trainable=False))
-            # We won't actually use the weights, but we'll initialize them
-            sl_model.compile(loss='mse', optimizer='adam')
-            # Dummy fit to initialize the model
-            sl_model.fit(
-                X_train[:1], np.array([[2.0]]),
-                epochs=1, verbose=0
-            )
-        
-        # LSTM for take profit
-        print("Training take profit LSTM model...")
-        tp_model = create_lstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
-        tp_model.summary()
-        
-        try:
-            tp_model.fit(
-                X_train, y_tp_train,
-                epochs=50,
-                batch_size=8,
-                validation_data=(X_val, y_tp_val),
-                verbose=2,
-                callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
-            )
-        except Exception as e:
-            print(f"Error training take profit model: {str(e)}")
-            # If model training fails, create a simple model that returns a default value
-            print("Creating simple fallback model with default value")
-            # Create a simple model that flattens the input and then outputs a constant
-            tp_model = Sequential()
-            tp_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
-            tp_model.add(Dense(1, use_bias=True, trainable=False))
-            # We won't actually use the weights, but we'll initialize them
-            tp_model.compile(loss='mse', optimizer='adam')
-            # Dummy fit to initialize the model
-            tp_model.fit(
-                X_train[:1], np.array([[3.0]]),
-                epochs=1, verbose=0
-            )
-        
-        # Store models in the dictionary
-        models['entry_time'] = entry_model
-        models['exit_time'] = exit_model
-        models['stop_loss'] = sl_model
-        models['take_profit'] = tp_model
-        
-        # Train for position type (buy/sell)
-        print("Training position type model...")
-        pos_model = Sequential()
-        pos_model.add(LSTM(32, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False))
-        pos_model.add(Dense(16, activation='relu'))
-        pos_model.add(Dense(1, activation='sigmoid'))
-        pos_model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=0.001), metrics=['accuracy'])
-        pos_model.summary()
-        
-        try:
-            pos_model.fit(
-                X_train, y_pos_train,
-                epochs=50,
-                batch_size=8,
-                validation_data=(X_val, y_pos_val),
-                verbose=2,
-                callbacks=[EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)]
-            )
-        except Exception as e:
-            print(f"Error training position type model: {str(e)}")
-            # If model training fails, create a simple model that returns a default value
-            print("Creating simple fallback model with default value")
-            # Create a simple model that flattens the input and then outputs a constant
-            pos_model = Sequential()
-            pos_model.add(Flatten(input_shape=(X_train.shape[1], X_train.shape[2])))
-            pos_model.add(Dense(1, activation='sigmoid', use_bias=True, trainable=False))
-            # We won't actually use the weights, but we'll initialize them
-            pos_model.compile(loss='binary_crossentropy', optimizer='adam')
-            # Dummy fit to initialize the model
-            pos_model.fit(
-                X_train[:1], np.array([[0.5]]),
-                epochs=1, verbose=0
-            )
-        
-        models['position_type'] = pos_model
-        
-        return models
+    
     except Exception as e:
         print(f"Error preparing sequences: {str(e)}")
         import traceback
@@ -731,16 +586,17 @@ def build_lstm_models(dataset):
         return None
 
 # Function to make predictions with LSTM models
-def predict_with_lstm(models, day_data):
+def predict_with_lstm(models, day_data, entry_position):
     """
     Make predictions using trained LSTM models for a specific day.
     
     Parameters:
-    - models (dict): Dictionary of trained LSTM models.
-    - day_data (DataFrame): Intraday data for a specific day.
+    - models (dict): Dictionary of trained LSTM models
+    - day_data (DataFrame): Intraday data for a specific day
+    - entry_position (str): 'BUY' or 'SELL' based on gap type
     
     Returns:
-    - prediction (dict): Dictionary containing predicted trading parameters.
+    - prediction (dict): Dictionary containing predicted trading parameters
     """
     if models is None:
         print("No models available for prediction")
@@ -749,13 +605,13 @@ def predict_with_lstm(models, day_data):
             'exit_time': '15:15:00',
             'stop_loss_pct': 2.0,
             'take_profit_pct': 3.0,
-            'position': 'BUY',
+            'entry_position': entry_position,
+            'exit_position': 'SELL' if entry_position == 'BUY' else 'BUY',
             'confidence': 0.5
         }
     
     try:
         # Extract features for prediction
-        # Filter for the entry window
         entry_window = day_data[day_data['time'].between('09:15:00', '09:45:00')]
         
         if len(entry_window) < 5:
@@ -765,7 +621,8 @@ def predict_with_lstm(models, day_data):
                 'exit_time': '15:15:00',
                 'stop_loss_pct': 2.0,
                 'take_profit_pct': 3.0,
-                'position': 'BUY',
+                'entry_position': entry_position,
+                'exit_position': 'SELL' if entry_position == 'BUY' else 'BUY',
                 'confidence': 0.5
             }
         
@@ -780,71 +637,32 @@ def predict_with_lstm(models, day_data):
                 else:
                     entry_window[f'{col}_norm'] = (entry_window[col] - col_mean) / col_std
             else:
-                print(f"Column {col} not found, adding zeros")
                 entry_window[f'{col}_norm'] = 0
         
         # Extract the first 5 data points
         sequence = entry_window[['open_norm', 'high_norm', 'low_norm', 'close_norm', 'volume_norm']].values[:5]
         
-        # Ensure we have the right shape
-        if len(sequence) < 5:
-            print(f"Sequence too short: {len(sequence)}, padding with zeros")
-            # Pad with zeros if needed
-            padded_sequence = np.zeros((5, 5))
-            padded_sequence[:len(sequence)] = sequence
-            sequence = padded_sequence
-        
-        # Reshape to match the input shape of the model (1, 5, 5)
-        # The model expects shape (batch_size, time_steps, features)
+        # Reshape for model input
         X_pred = sequence.reshape(1, 5, 5)
         
         # Make predictions
-        try:
-            entry_time_pred = models['entry_time'].predict(X_pred)[0][0]
-            entry_time_str = decimal_to_time(entry_time_pred)
-        except Exception as e:
-            print(f"Error predicting entry time: {str(e)}")
-            entry_time_str = '09:17:00'
+        stop_loss_pct = models['stop_loss'].predict(X_pred)[0][0]
+        take_profit_pct = models['take_profit'].predict(X_pred)[0][0]
         
-        try:
-            exit_time_pred = models['exit_time'].predict(X_pred)[0][0]
-            exit_time_str = decimal_to_time(exit_time_pred)
-        except Exception as e:
-            print(f"Error predicting exit time: {str(e)}")
-            exit_time_str = '15:15:00'
+        # Simulate trade to find exit time
+        exit_time = simulate_trade(day_data, entry_position, stop_loss_pct, take_profit_pct)
         
-        try:
-            stop_loss_pct = models['stop_loss'].predict(X_pred)[0][0]
-            # Ensure stop loss is positive and reasonable
-            stop_loss_pct = max(0.5, min(5.0, stop_loss_pct))
-        except Exception as e:
-            print(f"Error predicting stop loss: {str(e)}")
-            stop_loss_pct = 2.0
-        
-        try:
-            take_profit_pct = models['take_profit'].predict(X_pred)[0][0]
-            # Ensure take profit is positive and reasonable
-            take_profit_pct = max(1.0, min(10.0, take_profit_pct))
-        except Exception as e:
-            print(f"Error predicting take profit: {str(e)}")
-            take_profit_pct = 3.0
-        
-        try:
-            position_pred = models['position_type'].predict(X_pred)[0][0]
-            position = 'BUY' if position_pred > 0.5 else 'SELL'
-            confidence = position_pred if position == 'BUY' else (1 - position_pred)
-        except Exception as e:
-            print(f"Error predicting position: {str(e)}")
-            position = 'BUY'
-            confidence = 0.5
+        # Ensure exit position is opposite of entry
+        exit_position = 'SELL' if entry_position == 'BUY' else 'BUY'
         
         return {
-            'entry_time': entry_time_str,
-            'exit_time': exit_time_str,
+            'entry_time': '09:17:00',
+            'exit_time': exit_time,
             'stop_loss_pct': stop_loss_pct,
             'take_profit_pct': take_profit_pct,
-            'position': position,
-            'confidence': confidence
+            'entry_position': entry_position,
+            'exit_position': exit_position,
+            'confidence': 0.5
         }
     except Exception as e:
         print(f"Error making predictions: {str(e)}")
@@ -853,7 +671,8 @@ def predict_with_lstm(models, day_data):
             'exit_time': '15:15:00',
             'stop_loss_pct': 2.0,
             'take_profit_pct': 3.0,
-            'position': 'BUY',
+            'entry_position': entry_position,
+            'exit_position': 'SELL' if entry_position == 'BUY' else 'BUY',
             'confidence': 0.5
         }
 
@@ -920,7 +739,6 @@ def evaluate_lstm_models(models, dataset):
                     
                     # Get expected values if available
                     expected = {
-                        'entry_time': item.get('entry_times', [0.28])[0] if isinstance(item.get('entry_times', []), (list, np.ndarray)) else 0.28,
                         'exit_time': item.get('exit_times', [0.5])[0] if isinstance(item.get('exit_times', []), (list, np.ndarray)) else 0.5,
                         'stop_loss': item.get('stop_losses', [2.0])[0] if isinstance(item.get('stop_losses', []), (list, np.ndarray)) else 2.0,
                         'take_profit': item.get('take_profits', [3.0])[0] if isinstance(item.get('take_profits', []), (list, np.ndarray)) else 3.0,
@@ -928,28 +746,24 @@ def evaluate_lstm_models(models, dataset):
                     }
                     
                     # Make predictions
-                    entry_pred = models['entry_time'].predict(X_pred)[0][0]
                     exit_pred = models['exit_time'].predict(X_pred)[0][0]
                     sl_pred = models['stop_loss'].predict(X_pred)[0][0]
                     tp_pred = models['take_profit'].predict(X_pred)[0][0]
                     position_pred = models['position_type'].predict(X_pred)[0][0]
                     
                     # Convert to human-readable values
-                    entry_time_str = decimal_to_time(entry_pred)
                     exit_time_str = decimal_to_time(exit_pred)
-                    expected_entry_str = decimal_to_time(expected['entry_time'])
                     expected_exit_str = decimal_to_time(expected['exit_time'])
                     position_type = 'BUY' if position_pred > 0.5 else 'SELL'
                     
                     # Calculate accuracy
-                    entry_acc = 1 - min(1, abs(entry_pred - expected['entry_time']))
                     exit_acc = 1 - min(1, abs(exit_pred - expected['exit_time']))
                     sl_acc = 1 - min(1, abs(sl_pred - expected['stop_loss']) / max(0.1, expected['stop_loss']))
                     tp_acc = 1 - min(1, abs(tp_pred - expected['take_profit']) / max(0.1, expected['take_profit']))
                     position_acc = 1 if position_type == expected['position'] else 0
                     
                     # Overall accuracy
-                    overall_acc = (entry_acc + exit_acc + sl_acc + tp_acc + position_acc) / 5
+                    overall_acc = (exit_acc + sl_acc + tp_acc + position_acc) / 4
                     
                     # Calculate profit (simplified)
                     profit = expected['take_profit'] if position_acc == 1 else -expected['stop_loss']
@@ -957,9 +771,7 @@ def evaluate_lstm_models(models, dataset):
                     # Add result
                     results.append({
                         'sample_id': i,
-                        'predicted_entry_time': entry_time_str,
-                        'expected_entry_time': expected_entry_str,
-                        'predicted_exit_time': exit_time_str, 
+                        'predicted_exit_time': exit_time_str,
                         'expected_exit_time': expected_exit_str,
                         'predicted_stop_loss': sl_pred,
                         'expected_stop_loss': expected['stop_loss'],
@@ -967,7 +779,6 @@ def evaluate_lstm_models(models, dataset):
                         'expected_take_profit': expected['take_profit'],
                         'predicted_position': position_type,
                         'expected_position': expected['position'],
-                        'entry_accuracy': entry_acc,
                         'exit_accuracy': exit_acc,
                         'stop_loss_accuracy': sl_acc,
                         'take_profit_accuracy': tp_acc,
@@ -998,8 +809,6 @@ def evaluate_lstm_models(models, dataset):
             print("Creating dummy evaluation - dataset format not supported for detailed evaluation")
             return pd.DataFrame([{
                 'sample_id': 0,
-                'predicted_entry_time': '09:17:00',
-                'expected_entry_time': '09:17:00',
                 'predicted_exit_time': '15:15:00',
                 'expected_exit_time': '15:15:00',
                 'predicted_stop_loss': 2.0,
@@ -1084,125 +893,41 @@ def run_lstm_pipeline(stock):
             'profit': 0
         }
 
-def simulate_trades(minute_data, entry_time, exit_time, position_type, stop_loss_pct, take_profit_pct):
+def simulate_trade(day_data, entry_position, stop_loss_pct, take_profit_pct):
     """
-    Simulates a trade with given parameters and calculates profit percentage.
+    Simulate trade to find exit time based on stop loss or take profit.
     
     Parameters:
-        minute_data (DataFrame): Minute-level price data
-        entry_time (str): Time to enter the position (HH:MM:SS)
-        exit_time (str): Time to exit the position (HH:MM:SS)
-        position_type (str): 'BUY' or 'SELL'
-        stop_loss_pct (float): Stop loss percentage
-        take_profit_pct (float): Take profit percentage
-        
-    Returns:
-        float: Profit percentage from the trade
-    """
-    try:
-        # Ensure time column exists
-        if 'time' not in minute_data.columns and 'ts' in minute_data.columns:
-            if isinstance(minute_data['ts'].iloc[0], pd.Timestamp):
-                minute_data['time'] = minute_data['ts'].dt.strftime('%H:%M:%S')
-            else:
-                # If ts is a string, extract time part
-                minute_data['time'] = minute_data['ts'].str.split().str[1]
-        
-        # Standardize entry_time and exit_time format
-        if ':' in entry_time and len(entry_time.split(':')) == 3:
-            entry_time_fmt = entry_time
-        else:
-            # Add seconds if they're missing
-            entry_time_fmt = entry_time + ":00" if len(entry_time.split(':')) == 2 else entry_time
-        
-        if ':' in exit_time and len(exit_time.split(':')) == 3:
-            exit_time_fmt = exit_time
-        else:
-            # Add seconds if they're missing
-            exit_time_fmt = exit_time + ":00" if len(exit_time.split(':')) == 2 else exit_time
-        
-        # Filter for entry time - with flexible matching
-        entry_data = minute_data[minute_data['time'].str.startswith(entry_time_fmt[:5])]
-        if entry_data.empty:
-            print(f"No data found for entry time {entry_time_fmt}")
-            return 0
-        
-        # Filter for exit time - with flexible matching
-        exit_data = minute_data[minute_data['time'].str.startswith(exit_time_fmt[:5])]
-        if exit_data.empty:
-            print(f"No data found for exit time {exit_time_fmt}")
-            return 0
-        
-        # Get entry and exit prices
-        entry_price = entry_data.iloc[0]['open']
-        exit_price = exit_data.iloc[-1]['close']
-        
-        # Filter minutes between entry and exit - using string comparison for time
-        trade_window = minute_data[
-            (minute_data['time'] >= entry_time_fmt) & 
-            (minute_data['time'] <= exit_time_fmt)
-        ]
-        
-        if trade_window.empty:
-            print(f"No data in trade window between {entry_time_fmt} and {exit_time_fmt}")
-            return 0
-        
-        # Initialize trade outcome
-        profit_pct = 0
-        stop_loss_hit = False
-        take_profit_hit = False
-        
-        if position_type == 'BUY':
-            # For BUY position
-            # Check if stop loss was hit (price went down)
-            stop_loss_price = entry_price * (1 - stop_loss_pct/100)
-            min_price = trade_window['low'].min()
-            
-            if min_price <= stop_loss_price:
-                profit_pct = -stop_loss_pct
-                stop_loss_hit = True
-            
-            # Check if take profit was hit (price went up)
-            take_profit_price = entry_price * (1 + take_profit_pct/100)
-            max_price = trade_window['high'].max()
-            
-            if max_price >= take_profit_price:
-                profit_pct = take_profit_pct
-                take_profit_hit = True
-            
-            # If neither was hit, calculate actual profit/loss
-            if not stop_loss_hit and not take_profit_hit:
-                profit_pct = (exit_price - entry_price) / entry_price * 100
-        
-        else:  # SELL position
-            # For SELL position
-            # Check if stop loss was hit (price went up)
-            stop_loss_price = entry_price * (1 + stop_loss_pct/100)
-            max_price = trade_window['high'].max()
-            
-            if max_price >= stop_loss_price:
-                profit_pct = -stop_loss_pct
-                stop_loss_hit = True
-            
-            # Check if take profit was hit (price went down)
-            take_profit_price = entry_price * (1 - take_profit_pct/100)
-            min_price = trade_window['low'].min()
-            
-            if min_price <= take_profit_price:
-                profit_pct = take_profit_pct
-                take_profit_hit = True
-            
-            # If neither was hit, calculate actual profit/loss
-            if not stop_loss_hit and not take_profit_hit:
-                profit_pct = (entry_price - exit_price) / entry_price * 100
-        
-        return profit_pct
+    - day_data (DataFrame): Intraday data
+    - entry_position (str): 'BUY' or 'SELL'
+    - stop_loss_pct (float): Stop loss percentage
+    - take_profit_pct (float): Take profit percentage
     
-    except Exception as e:
-        print(f"Error in trade simulation: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return 0
+    Returns:
+    - str: Exit time in HH:MM:SS format
+    """
+    entry_price = day_data[day_data['time'] == '09:17:00']['open'].iloc[0]
+    
+    for _, row in day_data[day_data['time'] >= '09:17:00'].iterrows():
+        current_price = row['close']
+        
+        if entry_position == 'BUY':
+            # Check for stop loss
+            if current_price <= entry_price * (1 - stop_loss_pct/100):
+                return row['time']
+            # Check for take profit
+            if current_price >= entry_price * (1 + take_profit_pct/100):
+                return row['time']
+        else:  # SELL position
+            # Check for stop loss
+            if current_price >= entry_price * (1 + stop_loss_pct/100):
+                return row['time']
+            # Check for take profit
+            if current_price <= entry_price * (1 - take_profit_pct/100):
+                return row['time']
+    
+    # If neither is hit, return market close
+    return '15:15:00'
 
 def create_lstm_model(input_shape=(5, 5)):
     """Create an LSTM model for predicting trading parameters."""
@@ -1214,7 +939,7 @@ def create_lstm_model(input_shape=(5, 5)):
     model.compile(loss='mse', optimizer=Adam(learning_rate=0.001))
     return model
 
-def decimal_to_time(decimal_time):
+def decimal_to_time(time_str):
     """
     Convert decimal time (e.g., 0.28 for 9:17 AM) to formatted time string.
     
@@ -1318,57 +1043,149 @@ def serialize_results(stock, summary, evaluation):
         evaluation.to_csv(evaluation_path, index=False)
         print(f"Evaluation results saved to {evaluation_path}")
 
+def calculate_optimal_values(dataset):
+    """
+    Calculate optimal stop loss and take profit values for GAP_UP and GAP_DOWN.
+    
+    Parameters:
+    - dataset (list): List of trading days data
+    
+    Returns:
+    - dict: Dictionary containing optimal values and win percentages
+    """
+    gap_up_data = [d for d in dataset if d.get('gap_type') == 'GAP_UP']
+    gap_down_data = [d for d in dataset if d.get('gap_type') == 'GAP_DOWN']
+    
+    def find_optimal(data):
+        if not data:
+            return 2.0, 3.0, 0  # Default values when no data
+        
+        # Try different combinations of stop loss and take profit
+        best_profit = -float('inf')
+        best_sl = 2.0  # Default stop loss
+        best_tp = 3.0  # Default take profit
+        win_count = 0
+        
+        for sl in np.arange(0.5, 5.0, 0.1):
+            for tp in np.arange(1.0, 10.0, 0.1):
+                total_profit = 0
+                wins = 0
+                
+                for day in data:
+                    entry_price = day['entry_price']
+                    exit_price = day['exit_price']
+                    
+                    # Calculate profit (SELL - BUY regardless of order)
+                    if day['entry_position'] == 'BUY':
+                        profit = exit_price - entry_price
+                    else:
+                        profit = entry_price - exit_price
+                    
+                    # Check if stop loss or take profit was hit
+                    if day['entry_position'] == 'BUY':
+                        sl_price = entry_price * (1 - sl/100)
+                        tp_price = entry_price * (1 + tp/100)
+                    else:
+                        sl_price = entry_price * (1 + sl/100)
+                        tp_price = entry_price * (1 - tp/100)
+                    
+                    if (day['entry_position'] == 'BUY' and exit_price <= sl_price) or \
+                       (day['entry_position'] == 'SELL' and exit_price >= sl_price):
+                        profit = -sl/100 * entry_price
+                    elif (day['entry_position'] == 'BUY' and exit_price >= tp_price) or \
+                         (day['entry_position'] == 'SELL' and exit_price <= tp_price):
+                        profit = tp/100 * entry_price
+                    
+                    total_profit += profit
+                    if profit > 0:
+                        wins += 1
+                
+                if total_profit > best_profit:
+                    best_profit = total_profit
+                    best_sl = sl
+                    best_tp = tp
+                    win_count = wins
+        
+        win_percentage = (win_count / len(data)) * 100 if data else 0
+        return best_sl, best_tp, win_percentage
+    
+    gap_up_sl, gap_up_tp, gap_up_win = find_optimal(gap_up_data)
+    gap_down_sl, gap_down_tp, gap_down_win = find_optimal(gap_down_data)
+    
+    return {
+        'GAP_UP': {
+            'optimal_stop_loss': gap_up_sl,
+            'optimal_take_profit': gap_up_tp,
+            'win_percentage': gap_up_win
+        },
+        'GAP_DOWN': {
+            'optimal_stop_loss': gap_down_sl,
+            'optimal_take_profit': gap_down_tp,
+            'win_percentage': gap_down_win
+        }
+    }
+
 # Execute the pipeline
 if __name__ == "__main__":   
     # Run LSTM pipeline
     dataset = run_lstm_pipeline(STOCK)
     
-    # Check if dataset is None
     if dataset is None:
         print(f"No valid dataset for stock {STOCK}. Exiting.")
         sys.exit(1)
+    
+    # Calculate optimal values
+    optimal_values = calculate_optimal_values(dataset.get('sequences', []))
+    
+    print("\nOptimal Trading Parameters:")
+    for gap_type, values in optimal_values.items():
+        print(f"  {gap_type}:")
+        if values['optimal_stop_loss'] is not None:
+            print(f"    Optimal Stop Loss: {values['optimal_stop_loss']:.2f}%")
+            print(f"    Optimal Take Profit: {values['optimal_take_profit']:.2f}%")
+            print(f"    Win Percentage: {values['win_percentage']:.2f}%")
+        else:
+            print(f"    No data available for {gap_type}")
     
     # Get the most recent trading day for predictions
     gap_days = load_gap_days(STOCK)
     if not gap_days.empty:
         most_recent_day = gap_days.iloc[-1]['date']
-        
-        # Load data for the most recent day for prediction
         most_recent_data = load_minute_data(STOCK, most_recent_day)
         
         # Extract time if not already present
         if 'time' not in most_recent_data.columns and 'ts' in most_recent_data.columns:
             most_recent_data['time'] = most_recent_data['ts'].dt.strftime('%H:%M:%S')
         
+        # Get gap type for the most recent day
+        gap_type = gap_days[gap_days['date'] == most_recent_day]['gaptype'].iloc[0]
+        
+        # Determine entry position based on gap type
+        entry_position = 'SELL' if gap_type == 'GAP_UP' else 'BUY'
+        
         # Make predictions
         print(f"\nMaking predictions for {STOCK} on {most_recent_day}...")
         if dataset.get('models') is not None and not most_recent_data.empty:
-            predictions = predict_with_lstm(dataset['models'], most_recent_data)
-            # Convert numpy types to Python native types for JSON serialization
-            predictions = convert_numpy_types(predictions)
+            predictions = predict_with_lstm(dataset['models'], most_recent_data, entry_position)
             
             # Print predictions
             print(f"Trading strategy predictions:")
-            print(f"  Position: {predictions['position']} (confidence: {predictions['confidence']:.2f})")
-            print(f"  Entry time: {predictions['entry_time']}")
-            print(f"  Exit time: {predictions['exit_time']}")
-            print(f"  Stop loss: {predictions['stop_loss_pct']:.2f}%")
-            print(f"  Take profit: {predictions['take_profit_pct']:.2f}%")
+            print(f"  Gap Type: {gap_type}")
+            print(f"  Entry Position: {entry_position} at 09:17:00")
+            print(f"  Predicted Stop Loss: {predictions['stop_loss_pct']:.2f}%")
+            print(f"  Predicted Take Profit: {predictions['take_profit_pct']:.2f}%")
+            print(f"  Exit Time: {predictions['exit_time']}")
         else:
-            print("No models available or data empty, skipping predictions")
+            print("No models available or data empty, using default values")
             predictions = {
                 'entry_time': '09:17:00',
                 'exit_time': '15:15:00',
                 'stop_loss_pct': 2.0,
                 'take_profit_pct': 3.0,
-                'position': 'BUY',
-                'confidence': 0.5,
-                'note': 'Default values due to missing models or data'
+                'entry_position': entry_position,
+                'exit_position': 'SELL' if entry_position == 'BUY' else 'BUY',
+                'confidence': 0.5
             }
-    else:
-        print(f"No gap days found for {STOCK}, skipping predictions")
-        predictions = None
-        most_recent_day = None
     
     # Get summary with predictions
     summary = {
@@ -1382,8 +1199,9 @@ if __name__ == "__main__":
     if predictions is not None:
         summary['predictions'] = {
             'date': most_recent_day,
-            'position_type': predictions['position'],
-            'position_confidence': float(predictions['confidence']),
+            'entry_position': predictions['entry_position'],
+            'exit_position': predictions.get('exit_position', 'N/A'),
+            'confidence': float(predictions['confidence']),
             'entry_time': predictions['entry_time'],
             'exit_time': predictions['exit_time'],
             'stop_loss_percentage': float(predictions['stop_loss_pct']),
