@@ -146,7 +146,8 @@ def gaps_leg2_sl_tp():
         args = {
             'stop_loss_pct': float(request.args.get('stop_loss', 0.75)),
             'take_profit_pct': float(request.args.get('take_profit', 2)),
-            'entry_time': request.args.get('entry_time', '09:17')
+            'entry_time': request.args.get('entry_time', '09:17'),
+            'trade_direction': request.args.get('trade_direction', 'ALL')
         }
 
         results = run_backtest('gaps_trading_sl_tp_leg2', 

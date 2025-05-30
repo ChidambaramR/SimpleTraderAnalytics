@@ -40,6 +40,14 @@
                        value="{{ request.args.get('entry_time', '09:17') }}" 
                        pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" required>
             </div>
+            <div class="col-md-2">
+                <label for="trade_direction" class="form-label">Trade Direction</label>
+                <select class="form-control" id="trade_direction" name="trade_direction" required>
+                    <option value="ALL" {% if request.args.get('trade_direction', 'ALL') == 'ALL' %}selected{% endif %}>ALL</option>
+                    <option value="BUY_SELL" {% if request.args.get('trade_direction') == 'BUY_SELL' %}selected{% endif %}>BUY then SELL</option>
+                    <option value="SELL_BUY" {% if request.args.get('trade_direction') == 'SELL_BUY' %}selected{% endif %}>SELL then BUY</option>
+                </select>
+            </div>
             <div class="col-md-1 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary">Run Backtest</button>
             </div>

@@ -11,6 +11,7 @@ class Leg2GapTrader(DayTrader):
         self.stop_loss_pct = args.get('stop_loss_pct', 0.75)
         self.take_profit_pct = args.get('take_profit_pct', 2)
         self.entry_time = args.get('entry_time', '09:17')
+        self.trade_direction = args.get('trade_direction', 'ALL')  # 'BUY_SELL', 'SELL_BUY', 'ALL'
         self.daily_gaps = []
     
     def reset_state_for_next_day(self):
@@ -24,8 +25,23 @@ class Leg2GapTrader(DayTrader):
         current_open = day_data.iloc[1]['open']
         
         gap_percent = ((current_open - prev_close) / prev_close) * 100
+
+        direction_condition = False
         
-        if abs(gap_percent) >= self.gap_threshold:
+        # Split the condition to 3 parts - trade_direction is 'ALL', 'BUY_SELL', or 'SELL_BUY'
+        if self.trade_direction == 'ALL':
+            # Include both Gap Up and Gap Down - that is buy-sell and sell-buy
+            direction_condition = (abs(gap_percent) >= self.gap_threshold)
+        
+        elif self.trade_direction == 'BUY_SELL':
+            # We buy and sell during Gap Down
+            direction_condition = (abs(gap_percent) >= self.gap_threshold and gap_percent < 0)
+        
+        elif self.trade_direction == 'SELL_BUY':
+            # We sell and buy during Gap Up 
+            direction_condition = (abs(gap_percent) >= self.gap_threshold and gap_percent > 0)
+
+        if direction_condition:
             self.daily_gaps.append({
                 'symbol': stock_name,
                 'gap_percent': gap_percent,
