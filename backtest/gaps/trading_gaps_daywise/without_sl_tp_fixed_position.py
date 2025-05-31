@@ -142,13 +142,12 @@ def _run_backtest(from_date, to_date, args={}):
     except Exception as e:
         return {'error': f"Error in backtest: {str(e)}"}
 
-def run_backtest_fixed_position(from_date, to_date, force_run=False, args={}):
+def run_backtest_fixed_position(from_date, to_date, args={}):
     """Public interface for running the backtest with caching support."""
     strategy_name = 'gaps_trading_daywise_without_sl_tp_fixed_position'
     return run_backtest_with_cache(
         strategy_name=strategy_name,
         from_date=from_date,
         to_date=to_date,
-        backtest_func=_run_backtest,
-        force_run=force_run
+        backtest_func=_run_backtest
     )

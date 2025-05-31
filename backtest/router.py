@@ -2,7 +2,7 @@ from .gaps.trading_gaps_daywise.without_sl_tp import run_backtest as run_gaps_wi
 from .gaps.trading_gaps_daywise.without_sl_tp_fixed_position import run_backtest_fixed_position
 from .gaps.trading_gaps_first_minute.with_sl_tp import run_gaps_first_minute_with_sl_tp
 from backtest.gaps.trading_gaps_leg2.with_sl_tp_leg2 import run_gaps_with_sl_tp_leg2
-def run_backtest(strategy_name, from_date, to_date, force_run=False, args={}):
+def run_backtest(strategy_name, from_date, to_date, args={}):
     """
     Routes backtest requests to appropriate strategy implementations.
     
@@ -10,7 +10,6 @@ def run_backtest(strategy_name, from_date, to_date, force_run=False, args={}):
         strategy_name: Identifier for the strategy to run
         from_date: Start date for backtest
         to_date: End date for backtest
-        force_run: If True, bypasses cache
         
     Returns:
         Dictionary containing backtest results
@@ -36,4 +35,4 @@ def run_backtest(strategy_name, from_date, to_date, force_run=False, args={}):
             'roi_5x': 0
         }
     
-    return strategy_map[strategy_name](from_date, to_date, force_run, args) 
+    return strategy_map[strategy_name](from_date, to_date, args) 

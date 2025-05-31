@@ -149,7 +149,7 @@ def _run_backtest(from_date, to_date, args={}):
             'roi_5x': 0
         }
 
-def run_backtest(from_date, to_date, force_run=False, args={}):
+def run_backtest(from_date, to_date, args={}):
     """
     Public interface for running the backtest with caching support.
     """
@@ -158,6 +158,5 @@ def run_backtest(from_date, to_date, force_run=False, args={}):
         strategy_name=strategy_name,
         from_date=from_date,
         to_date=to_date,
-        backtest_func=_run_backtest,
-        force_run=force_run
+        backtest_func=_run_backtest
     ) 

@@ -1,5 +1,4 @@
-
-def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, force_run=False, args={}):
+def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, args={}):
     """
     Generic backtest runner with caching functionality.
     
@@ -8,7 +7,6 @@ def run_backtest_with_cache(strategy_name, from_date, to_date, backtest_func, fo
         from_date: Start date for backtest
         to_date: End date for backtest
         backtest_func: Function that implements the backtest
-        force_run: If True, runs backtest regardless of cache
     """
     try:        
         return backtest_func(from_date, to_date, args) # Run backtest

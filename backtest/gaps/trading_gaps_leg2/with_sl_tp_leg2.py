@@ -250,7 +250,7 @@ def _run_backtest(from_date, to_date, args={}):
     except Exception as e:
         return {'error': f"Error in backtest: {str(e)}"}
 
-def run_gaps_with_sl_tp_leg2(from_date, to_date, force_run=False, args={}):
+def run_gaps_with_sl_tp_leg2(from_date, to_date, args={}):
     """Public interface for running the backtest with caching support."""
     strategy_name = 'gaps_trading_first_minute_with_sl_tp'
     return run_backtest_with_cache(
@@ -258,6 +258,5 @@ def run_gaps_with_sl_tp_leg2(from_date, to_date, force_run=False, args={}):
         from_date=from_date,
         to_date=to_date,
         backtest_func=_run_backtest,
-        force_run=force_run,
         args=args
     ) 

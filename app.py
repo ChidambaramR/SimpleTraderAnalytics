@@ -91,10 +91,9 @@ def analyze_gaps():
 def gaps_without_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
-    force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
-        results = run_backtest('gaps_without_sl_tp', from_date, to_date, force_run=force_run)
+        results = run_backtest('gaps_without_sl_tp', from_date, to_date)
         return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp.html', 
                              results=results)
     
@@ -104,10 +103,9 @@ def gaps_without_sl_tp():
 def gaps_without_sl_tp_fixed_position():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
-    force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
-        results = run_backtest('gaps_without_sl_tp_fixed_position', from_date, to_date, force_run=force_run)
+        results = run_backtest('gaps_without_sl_tp_fixed_position', from_date, to_date)
         return render_template('strategies/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html', 
                              results=results)
     
@@ -117,7 +115,6 @@ def gaps_without_sl_tp_fixed_position():
 def gaps_first_minute_with_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
-    force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
         args = {
@@ -129,7 +126,6 @@ def gaps_first_minute_with_sl_tp():
         results = run_backtest('gaps_trading_first_minute_with_sl_tp', 
                              from_date, 
                              to_date, 
-                             force_run=force_run,
                              args=args)
         return render_template('strategies/gaps/trading_gaps_first_minute/with_sl_tp.html', 
                              results=results)
@@ -140,7 +136,6 @@ def gaps_first_minute_with_sl_tp():
 def gaps_leg2_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
-    force_run = request.args.get('force_run', 'false').lower() == 'true'
     
     if from_date and to_date:
         args = {
@@ -153,7 +148,6 @@ def gaps_leg2_sl_tp():
         results = run_backtest('gaps_trading_sl_tp_leg2', 
                              from_date, 
                              to_date, 
-                             force_run=force_run,
                              args=args)
         return render_template('strategies/gaps/trading_gaps_leg2/leg2_sl_tp.html', 
                              results=results)
