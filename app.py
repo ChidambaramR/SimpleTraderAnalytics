@@ -99,18 +99,6 @@ def gaps_without_sl_tp():
     
     return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html')
 
-@app.route('/backtest/gaps/trading-gaps-daywise/without-sl-tp-fixed-position')
-def gaps_without_sl_tp_fixed_position():
-    from_date = request.args.get('from_date')
-    to_date = request.args.get('to_date')
-    
-    if from_date and to_date:
-        results = run_backtest('gaps_without_sl_tp_fixed_position', from_date, to_date)
-        return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html', 
-                             results=results)
-    
-    return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp_fixed_position.html')
-
 @app.route('/backtest/gaps/trading_gaps_first_minute/with_sl_tp')
 def gaps_first_minute_with_sl_tp():
     from_date = request.args.get('from_date')

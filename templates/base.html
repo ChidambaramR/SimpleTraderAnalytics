@@ -55,16 +55,8 @@
                             <li class="dropdown-submenu">
                                 <a class="dropdown-item dropdown-toggle" href="#">Gaps</a>
                                 <ul class="dropdown-menu">
-                                    <li class="dropdown-submenu">
-                                        <a class="dropdown-item dropdown-toggle" href="#">TradingGapsDayWise</a>
-                                        <ul class="dropdown-menu">
-                                            <li>
-                                                <a class="dropdown-item" href="{{ url_for('gaps_without_sl_tp') }}">WithoutStopLoss&WithoutTakeProfit</a>
-                                            </li>
-                                            <li>
-                                                <a class="dropdown-item" href="{{ url_for('gaps_without_sl_tp_fixed_position') }}">WithoutStopLoss&WithoutTakeProfit-FixedPosition</a>
-                                            </li>
-                                        </ul>
+                                    <li>
+                                        <a class="dropdown-item" href="{{ url_for('gaps_without_sl_tp') }}">FullDay</a>
                                     </li>
                                     <li><a class="dropdown-item" href="{{ url_for('gaps_first_minute_with_sl_tp') }}">First Minute with SL/TP</a></li>
                                     <li><a class="dropdown-item" href="{{ url_for('gaps_leg2_sl_tp') }}">Leg2 with SL/TP</a></li>
