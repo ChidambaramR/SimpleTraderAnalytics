@@ -87,7 +87,7 @@ def analyze_gaps():
         
     return render_template('analyze/gaps/index.html', results=results)
 
-@app.route('/backtest/gaps/trading-gaps-daywise/without-sl-tp')
+@app.route('/backtest/gaps/trading-gaps-daywise/run_test')
 def gaps_without_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
@@ -99,7 +99,7 @@ def gaps_without_sl_tp():
     
     return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html')
 
-@app.route('/backtest/gaps/trading_gaps_first_minute/with_sl_tp')
+@app.route('/backtest/gaps/trading_gaps_first_minute/run_test')
 def gaps_first_minute_with_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
@@ -120,7 +120,7 @@ def gaps_first_minute_with_sl_tp():
     
     return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html')
 
-@app.route('/backtest/gaps/trading_gaps_leg2/leg2_sl_tp')
+@app.route('/backtest/gaps/trading_gaps_leg2/run_test')
 def gaps_leg2_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
