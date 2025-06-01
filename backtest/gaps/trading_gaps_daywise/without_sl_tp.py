@@ -111,4 +111,5 @@ def run_backtest(from_date, to_date, initial_capital=100000, args={}):
         'avg_loss_per_trade': results['avg_loss_per_trade'],
         'avg_daily_profit': results['avg_daily_profit'],
         'avg_daily_loss': results['avg_daily_loss'],
+        'stock_stats': results['stock_stats'],
     } 
