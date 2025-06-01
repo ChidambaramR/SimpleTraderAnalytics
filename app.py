@@ -94,17 +94,19 @@ def analyze_gaps():
 def gaps_without_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
+    initial_capital = int(request.args.get('initial_capital', 100000))
 
     if not from_date or not to_date:
         return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html', results=None)
     
-    results = run_backtest_daywise_without_sl_tp(from_date, to_date)
+    results = run_backtest_daywise_without_sl_tp(from_date, to_date, initial_capital=initial_capital)
     return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_from_first_to_nth_minute/run_test')
 def gaps_from_first_to_nth_minute_with_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
+    initial_capital = int(request.args.get('initial_capital', 100000))
     args = {
         'stop_loss_pct': float(request.args.get('stop_loss', 0.75)),
         'take_profit_pct': float(request.args.get('take_profit', 2)),
@@ -114,13 +116,14 @@ def gaps_from_first_to_nth_minute_with_sl_tp():
     if not from_date or not to_date:
         return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html', results=None)
     
-    results = run_backtest_first_minute_with_sl_tp(from_date, to_date, args)
+    results = run_backtest_first_minute_with_sl_tp(from_date, to_date, initial_capital=initial_capital, args=args)
     return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_leg2/run_test')
 def gaps_leg2_sl_tp():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
+    initial_capital = int(request.args.get('initial_capital', 100000))
     args = {
         'stop_loss_pct': float(request.args.get('stop_loss', 0.75)),
         'take_profit_pct': float(request.args.get('take_profit', 2)),
@@ -131,7 +134,7 @@ def gaps_leg2_sl_tp():
     if not from_date or not to_date:
         return render_template('backtest/gaps/trading_gaps_leg2/leg2_sl_tp.html', results=None)
     
-    results = run_backtest_leg2(from_date, to_date, args)
+    results = run_backtest_leg2(from_date, to_date, initial_capital=initial_capital, args=args)
     return render_template('backtest/gaps/trading_gaps_leg2/leg2_sl_tp.html', results=results)
 
 @app.route('/analyze/gaps/first-minute', methods=['GET', 'POST'])

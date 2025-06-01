@@ -96,30 +96,19 @@ class DaywiseGapTrader(DayTrader):
         }
         return [trade]
 
-def run_backtest(from_date, to_date, args={}):
-    results_1L = DaywiseGapTrader(initial_capital=100000, args=args).run_backtest(from_date, to_date)
-    results_10L = DaywiseGapTrader(initial_capital=1000000, args=args).run_backtest(from_date, to_date)
+def run_backtest(from_date, to_date, initial_capital=100000, args={}):
+    results = DaywiseGapTrader(initial_capital=initial_capital, args=args).run_backtest(from_date, to_date)
     return {
-        'total_trades': results_1L['total_trades'],
-        'win_ratio': results_1L['win_ratio'],
-        'initial_capital_1L': results_1L['initial_capital'],
-        'initial_capital_10L': results_10L['initial_capital'],
-        'capital_added_1L': results_1L['capital_added'],
-        'capital_added_10L': results_10L['capital_added'],
-        'final_capital_1L': results_1L['final_capital'],
-        'final_capital_10L': results_10L['final_capital'],
-        'profit_1L': results_1L['profit'],
-        'profit_10L': results_10L['profit'],
-        'max_drawdown_1L': results_1L['max_drawdown'],
-        'max_drawdown_10L': results_10L['max_drawdown'],
-        'roi_1L': results_1L['roi'],
-        'roi_10L': results_10L['roi'],
-        'avg_profit_per_trade_1L': results_1L['avg_profit_per_trade'],
-        'avg_profit_per_trade_10L': results_10L['avg_profit_per_trade'],
-        'avg_loss_per_trade_1L': results_1L['avg_loss_per_trade'],
-        'avg_loss_per_trade_10L': results_10L['avg_loss_per_trade'],
-        'avg_daily_profit_1L': results_1L['avg_daily_profit'],
-        'avg_daily_profit_10L': results_10L['avg_daily_profit'],
-        'avg_daily_loss_1L': results_1L['avg_daily_loss'],
-        'avg_daily_loss_10L': results_10L['avg_daily_loss'],
+        'total_trades': results['total_trades'],
+        'win_ratio': results['win_ratio'],
+        'initial_capital': results['initial_capital'],
+        'capital_added': results['capital_added'],
+        'final_capital': results['final_capital'],
+        'profit': results['profit'],
+        'max_drawdown': results['max_drawdown'],
+        'roi': results['roi'],
+        'avg_profit_per_trade': results['avg_profit_per_trade'],
+        'avg_loss_per_trade': results['avg_loss_per_trade'],
+        'avg_daily_profit': results['avg_daily_profit'],
+        'avg_daily_loss': results['avg_daily_loss'],
     } 

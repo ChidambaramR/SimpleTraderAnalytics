@@ -32,6 +32,10 @@
             <input type="date" class="form-control" id="to_date" name="to_date" 
                    value="{{ request.args.get('to_date', '') }}" required>
         </div>
+        <div class="col-md-4">
+            <label for="initial_capital" class="form-label">Initial Capital</label>
+            <input type="number" class="form-control" id="initial_capital" name="initial_capital" value="{{ request.args.get('initial_capital', '100000') }}" min="1" required>
+        </div>
         <div class="col-md-4 d-flex align-items-end">
             <button type="submit" class="btn btn-primary me-2">Run Backtest</button>
         </div>
@@ -50,70 +54,57 @@
             <thead>
                 <tr>
                     <th>Metric</th>
-                    <th>1L Account</th>
-                    <th>10L Account</th>
+                    <th>Account</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
                     <td>Total Trades</td>
                     <td>{{ results.total_trades }}</td>
-                    <td>{{ results.total_trades }}</td>
                 </tr>
                 <tr>
                     <td>Win Ratio</td>
                     <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
-                    <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
                 </tr>
                 <tr>
                     <td>Initial Capital</td>
-                    <td>₹{{ results.initial_capital_1L|indian_currency }}</td>
-                    <td>₹{{ results.initial_capital_10L|indian_currency }}</td>
+                    <td>₹{{ results.initial_capital|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Capital Added</td>
-                    <td>₹{{ results.capital_added_1L|indian_currency }}</td>
-                    <td>₹{{ results.capital_added_10L|indian_currency }}</td>
+                    <td>₹{{ results.capital_added|indian_currency }}</td>
                 </tr>
                 <tr>
-                    <td>Final Equity</td>
-                    <td>₹{{ results.final_capital_1L|indian_currency }}</td>
-                    <td>₹{{ results.final_capital_10L|indian_currency }}</td>
+                    <td>Final Capital</td>
+                    <td>₹{{ results.final_capital|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Profit</td>
-                    <td>₹{{ results.profit_1L|indian_currency }}</td>
-                    <td>₹{{ results.profit_10L|indian_currency }}</td>
+                    <td>₹{{ results.profit|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Return on Investment</td>
-                    <td>{{ '{:,.2f}'.format(results.roi_1L) }}%</td>
-                    <td>{{ '{:,.2f}'.format(results.roi_10L) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.roi) }}%</td>
                 </tr>
                 <tr>
                     <td>Max Drawdown</td>
-                    <td>₹{{ results.max_drawdown_1L|indian_currency }}</td>
-                    <td>₹{{ results.max_drawdown_10L|indian_currency }}</td>
+                    <td>₹{{ results.max_drawdown|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Average Profit per Trade</td>
-                    <td>₹{{ results.avg_profit_per_trade_1L|indian_currency }}</td>
-                    <td>₹{{ results.avg_profit_per_trade_10L|indian_currency }}</td>
+                    <td>₹{{ results.avg_profit_per_trade|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Average Loss per Trade</td>
-                    <td>₹{{ results.avg_loss_per_trade_1L|indian_currency }}</td>
-                    <td>₹{{ results.avg_loss_per_trade_10L|indian_currency }}</td>
+                    <td>₹{{ results.avg_loss_per_trade|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Average Daily Profit</td>
-                    <td>₹{{ results.avg_daily_profit_1L|indian_currency }}</td>
-                    <td>₹{{ results.avg_daily_profit_10L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_profit|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Average Daily Loss</td>
-                    <td>₹{{ results.avg_daily_loss_1L|indian_currency }}</td>
-                    <td>₹{{ results.avg_daily_loss_10L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_loss|indian_currency }}</td>
                 </tr>
             </tbody>
         </table>
