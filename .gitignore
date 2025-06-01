@@ -11,7 +11,7 @@ __pycache__/
 .DS_Store
 *.db*
 # Dont publish db files
-database/ohlc_data/*.db
+database/ohlc_data/*
 prod_stats/data/*
 prod_stats/manifest.json
 keys.json

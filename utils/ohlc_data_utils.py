@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import timedelta
-from database.utils.db_utils import get_db_and_tables
+from database.utils.db_utils import get_duckdb_minute_connection
 
 def get_stitched_ohlc_data(date: str, stock: str, lookback_minutes: int = 120) -> pd.DataFrame:
     """
@@ -21,13 +21,13 @@ def get_stitched_ohlc_data(date: str, stock: str, lookback_minutes: int = 120) -
         current_date = pd.to_datetime(date)
         
         # Get minute data connections
-        minute_connections = get_db_and_tables('minute')
+        minute_connection = get_duckdb_minute_connection()
+
+        is_stock_data_present = is_stock_present(minute_connection, stock)
         
-        if stock not in minute_connections:
+        if not is_stock_data_present:
             raise ValueError(f"No minute data found for stock: {stock}")
-            
-        minute_conn = minute_connections[stock]
-        
+
         try:
             # Get current date's data
             current_query = f"""
@@ -36,11 +36,7 @@ def get_stitched_ohlc_data(date: str, stock: str, lookback_minutes: int = 120) -
             WHERE date(ts) = ?
             ORDER BY ts
             """
-            current_df = pd.read_sql_query(
-                current_query, 
-                minute_conn, 
-                params=(current_date.strftime('%Y-%m-%d'),)
-            )
+            current_df = minute_connection.execute(current_query, (current_date.strftime('%Y-%m-%d'),)).fetchdf()
             
             if current_df.empty:
                 raise ValueError(f"No data found for {stock} on {date}")
@@ -53,14 +49,11 @@ def get_stitched_ohlc_data(date: str, stock: str, lookback_minutes: int = 120) -
             AND time(ts) >= '09:15:00'
             ORDER BY ts DESC
             """
-            prev_df = pd.read_sql_query(
-                prev_query, 
-                minute_conn, 
-                params=(
+
+            prev_df = minute_connection.execute(prev_query, (
                     (current_date - timedelta(days=5)).strftime('%Y-%m-%d'),
                     (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
-                )
-            )
+                )).fetchdf()
             
             # Convert timestamp to datetime for both dataframes
             current_df['ts'] = pd.to_datetime(current_df['ts'])
@@ -81,8 +74,14 @@ def get_stitched_ohlc_data(date: str, stock: str, lookback_minutes: int = 120) -
             
         finally:
             # Close all unique connections
-            for conn in set(minute_connections.values()):
-                conn.close()
+            minute_connection.close()
                 
     except Exception as e:
         raise Exception(f"Error fetching OHLC data for {stock} on {date}: {str(e)}")
+
+def is_stock_present(con, stock):
+    result = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+        (stock,)
+    ).fetchone()
+    return result[0] > 0

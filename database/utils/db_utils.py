@@ -1,4 +1,5 @@
 import sqlite3
+import duckdb
 import os
 import pandas as pd
 import string
@@ -77,18 +78,11 @@ def get_db_and_tables(interval):
     except Exception as e:
         raise Exception(f"Error in database setup: {str(e)}")
 
-def close_all_connections(connections):
+def get_duckdb_minute_connection():
     """
-    Closes all database connections.
-    connections can be either a single connection or a dictionary of connections
+    Returns a DuckDB connection for minute data, which is generated from parquert files.
     """
-    try:
-        if isinstance(connections, dict):
-            # Close unique connections (multiple stocks might share the same connection)
-            unique_connections = set(connections.values())
-            for conn in unique_connections:
-                conn.close()
-        else:
-            connections.close()
-    except Exception as e:
-        raise Exception(f"Error closing connections: {str(e)}") 
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(current_dir, '..', 'ohlc_data', 'merged_parquet.duckdb')
+    duckdb_conn = duckdb.connect(db_path)
+    return duckdb_conn
