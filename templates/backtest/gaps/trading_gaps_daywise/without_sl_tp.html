@@ -15,7 +15,7 @@
             <li>Gap Up: Short at open, cover at close</li>
             <li>Gap Down: Buy at open, sell at close</li>
             <li>Trade 1 quantity of each stock</li>
-            <li>Results shown for both 1x and 5x leverage</li>
+            <li>Results shown for both 1L and 10L Investment</li>
         </ul>
     </p>
 </div>
@@ -44,43 +44,76 @@
         {{ results.error }}
     </div>
     {% else %}
-    <div class="backtest-results">
+    <div class="results-section">
         <h3>Backtest Results</h3>
-        <table class="table table-bordered backtest-table">
-            <thead class="table-light">
+        <table class="table table-striped">
+            <thead>
                 <tr>
                     <th>Metric</th>
-                    <th>1x Leverage</th>
-                    <th>5x Leverage</th>
+                    <th>1L Account</th>
+                    <th>10L Account</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
                     <td>Total Trades</td>
-                    <td class="text-center" colspan="2">{{ results.total_trades }}</td>
+                    <td>{{ results.total_trades }}</td>
+                    <td>{{ results.total_trades }}</td>
                 </tr>
                 <tr>
                     <td>Win Ratio</td>
-                    <td class="text-center" colspan="2">{{ results.win_ratio }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.win_ratio) }}%</td>
                 </tr>
                 <tr>
-                    <td>Total Money Invested</td>
-                    <td class="text-center" colspan="2">₹{{ results.total_invested|indian_currency }}</td>
+                    <td>Initial Capital</td>
+                    <td>₹{{ results.initial_capital_1L|indian_currency }}</td>
+                    <td>₹{{ results.initial_capital_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Capital Added</td>
+                    <td>₹{{ results.capital_added_1L|indian_currency }}</td>
+                    <td>₹{{ results.capital_added_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Final Equity</td>
+                    <td>₹{{ results.final_capital_1L|indian_currency }}</td>
+                    <td>₹{{ results.final_capital_10L|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Profit</td>
-                    <td>₹{{ results.profit_1x|indian_currency }}</td>
-                    <td>₹{{ results.profit_5x|indian_currency }}</td>
+                    <td>₹{{ results.profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.profit_10L|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Return on Investment</td>
-                    <td>{{ '{:,.2f}'.format(results.roi_1x) }}%</td>
-                    <td>{{ '{:,.2f}'.format(results.roi_5x) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_1L) }}%</td>
+                    <td>{{ '{:,.2f}'.format(results.roi_10L) }}%</td>
                 </tr>
                 <tr>
                     <td>Max Drawdown</td>
-                    <td>₹{{ results.max_drawdown_1x|indian_currency }}</td>
-                    <td>₹{{ results.max_drawdown_5x|indian_currency }}</td>
+                    <td>₹{{ results.max_drawdown_1L|indian_currency }}</td>
+                    <td>₹{{ results.max_drawdown_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Profit per Trade</td>
+                    <td>₹{{ results.avg_profit_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_profit_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Loss per Trade</td>
+                    <td>₹{{ results.avg_loss_per_trade_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_loss_per_trade_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Profit</td>
+                    <td>₹{{ results.avg_daily_profit_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_profit_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Average Daily Loss</td>
+                    <td>₹{{ results.avg_daily_loss_1L|indian_currency }}</td>
+                    <td>₹{{ results.avg_daily_loss_10L|indian_currency }}</td>
                 </tr>
             </tbody>
         </table>

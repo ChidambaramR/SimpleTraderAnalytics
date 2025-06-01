@@ -6,9 +6,39 @@ from database.utils.db_utils import get_db_and_tables
 
 
 class DayTrader(ABC):
+    """
+    Abstract base class for simulating intraday (day trading) strategies using OHLC data at both daily and minute frequency.
+
+    This class provides a framework for running backtests on intraday trading strategies.
+    It assumes that daily and minute data is available in the database.
+    The primary workflow is managed by the `run_backtest` method, which iterates over trading days 
+      and stocks, simulates trades, and tracks performance metrics.
+
+    Key Features:
+    - Loads daily and minute OHLC data for a given list of stocks and date range.
+    - For each trading day, performs sanity checks, slices current and previous day data, and determines tradeable stocks.
+    - Uses `get_trade_plan` to select stocks to trade and allocate capital for the day.
+    - Simulates trades using user-implemented logic (see `generate_trades`).
+    - Tracks daily and aggregate P&L, win ratio, capital added, drawdown, and other statistics.
+    - Updates equity and resets state as needed, ensuring the simulation reflects realistic capital management (e.g., topping up equity if it falls below initial capital).
+    - Provides detailed results including trade logs, per-stock statistics, and summary metrics (win ratio, ROI, max drawdown, etc.).
+
+    Abstract Methods (to be implemented by subclasses):
+    - get_trade_plan(all_stocks, daily_data, prev_date, current_date): Decide which stocks to trade and how much capital to allocate to each for the current day.
+    - generate_trades(stock, day_data, minute_data, available_capital): Generate trades for a stock on a given day.
+    - reset_state_for_next_day(): Reset any stateful variables for the next trading day.
+
+    Example usage:
+        class MyStrategy(DayTrader):
+            ... # implement abstract methods
+        trader = MyStrategy(initial_capital=100000)
+        results = trader.run_backtest('2023-01-01', '2023-03-31', stock_list=['AAPL', 'GOOG'])
+
+    See also: backtest/gaps/trading_gaps_first_minute/with_sl_tp.py for an example subclass.
+    """
     def __init__(self, initial_capital=100000):
         self.initial_capital = initial_capital
-        self.current_equity = initial_capital
+        self.current_capital = initial_capital
         self.capital_added = 0
         self.peak_equity = initial_capital
         self.max_drawdown = 0
@@ -21,10 +51,16 @@ class DayTrader(ABC):
         self.top_n = 10  # Default number of top stocks to track
         
     @abstractmethod
-    def should_trade_stock(self, day_data, stock_name):
+    def get_trade_plan(self, all_stocks, daily_data, prev_date, current_date):
         """
-        Determine if we should trade this stock based on daily data.
-        Returns: bool
+        Decide which stocks to trade and how much capital to allocate to each for the current day.
+        Args:
+            all_stocks: list of all stock names
+            daily_data: dict of {stock: DataFrame} for all stocks
+            prev_date: previous trading day (Timestamp)
+            current_date: current trading day (Timestamp)
+        Returns:
+            dict mapping stock to capital allocation for the day
         """
         pass
         
@@ -35,22 +71,7 @@ class DayTrader(ABC):
         Returns: list of trade dictionaries
         """
         pass
-    
-    @abstractmethod
-    def reset_state_for_next_day(self):
-        """
-        Reset state for next day
-        """
-        pass
-    
-    @abstractmethod
-    def get_available_capital(self, tradeable_stocks):
-        """
-        Calculate available capital for each tradeable stock
-        Returns: dict mapping stock to available capital
-        """
-        pass
-    
+
     def load_data(self, from_date, to_date, stock_list=None):
         """
         Pre-load daily data into memory
@@ -138,48 +159,25 @@ class DayTrader(ABC):
                 if (current_date - prev_date).days >= 4:
                     print(f"Skipping day {current_date} due to gap of {(current_date - prev_date).days} days")
                     continue
-    
-                daily_pnl = 0
-                
-                # First pass: Find all tradeable stocks for this day
-                tradeable_stocks = []
-                for stock in daily_data.keys():
-                    try:
-                        stock_data = daily_data[stock]
-                        mask = (stock_data.index.date == prev_date.date()) | (stock_data.index.date == current_date.date())
-                        day_slice = stock_data[mask]
-                        
-                        if len(day_slice) < 2:  # Need both days
-                            continue
-                            
-                        if self.should_trade_stock(day_slice, stock):
-                            tradeable_stocks.append(stock)
-                            
-                    except Exception as e:
-                        print(f"Error checking stock {stock}: {str(e)}")
-                        continue
-                
-                # Sort tradeable stocks by absolute gap percentage and take top 5
-                # self.daily_gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
-                # tradeable_stocks = [gap['symbol'] for gap in self.daily_gaps[:5]]
 
-                # Get available capital for each stock
-                capital_allocation = self.get_available_capital(tradeable_stocks)
-                
-                # Second pass: Generate and execute trades only for tradeable stocks
-                for stock in tradeable_stocks:
+                daily_pnl = 0
+
+                all_stocks = list(daily_data.keys())
+                trade_plan = self.get_trade_plan(all_stocks, daily_data, prev_date, current_date)
+
+                # Generate trades for each stock in the trade plan
+                for stock, capital in trade_plan.items():
                     try:
-                        # Get daily data
                         stock_data = daily_data[stock]
-                        mask = (stock_data.index.date == prev_date.date()) | (stock_data.index.date == current_date.date())
-                        day_slice = stock_data[mask]
-                        
-                        # Get minute data only for tradeable stocks
+                        day_slice = stock_data[
+                            (stock_data.index.date == prev_date.date()) | 
+                            (stock_data.index.date == current_date.date())
+                            ]
+
                         minute_slice = self.get_minute_data(stock, current_date)
-                        
-                        # Generate and process trades with allocated capital
-                        day_trades = self.generate_trades(stock, day_slice, minute_slice, capital_allocation[stock])
-                        
+
+                        day_trades = self.generate_trades(stock, day_slice, minute_slice, capital)
+
                         for trade in day_trades:
                             self.trades.append(trade)
                             self.trade_logs.append(trade)
@@ -187,29 +185,30 @@ class DayTrader(ABC):
                             if trade['PNL'] > 0:
                                 self.wins += 1
                             daily_pnl += trade['PNL']
-                            # Update stock-level statistics
                             self.update_stock_stats(trade)
-                            
+
                     except Exception as e:
                         print(f"Error executing trades for stock {stock}: {str(e)}")
                         continue
-                
-                # Update equity and drawdown
-                self.current_equity += daily_pnl
-                self.reset_state_for_next_day()
-                self.peak_equity = max(self.peak_equity, self.current_equity)
-                current_drawdown = self.peak_equity - self.current_equity
+
+                # Update current cash in hand with the daily P&L
+                self.current_capital += daily_pnl
+
+                # Update peak equity and max drawdown
+                self.peak_equity = max(self.peak_equity, self.current_capital)
+                current_drawdown = self.peak_equity - self.current_capital
                 self.max_drawdown = max(self.max_drawdown, current_drawdown)
 
-                if self.current_equity < self.initial_capital:
-                    diff = self.initial_capital - self.current_equity
-                    self.capital_added += diff
-                    self.current_equity = self.initial_capital
-            
+                # If current equity is less than initial capital, add the difference to capital added
+                # This is where we top up the equity to the initial capital
+                # We will track the added capital in the results
+                if self.current_capital < self.initial_capital:
+                    self.capital_added += (self.initial_capital - self.current_capital)
+                    self.current_capital = self.initial_capital
+
             return self.get_results()
-            
         except Exception as e:
-            return {'error': f"Error in backtest: {str(e)}"}
+            raise Exception(f"Error in backtest: {str(e)}")
     
     def get_results(self):
         """Calculate and return final results"""
@@ -219,7 +218,7 @@ class DayTrader(ABC):
         trades_df = pd.DataFrame(self.trades)
         win_ratio = (self.wins / self.total_trades * 100) if self.total_trades > 0 else 0
         total_capital = self.initial_capital + self.capital_added
-        total_pnl = self.current_equity - total_capital
+        total_pnl = self.current_capital - total_capital
         roi = (total_pnl / total_capital * 100)
         
         # Calculate trade statistics
@@ -235,9 +234,6 @@ class DayTrader(ABC):
         avg_profit = profitable_trades['PNL'].mean() if len(profitable_trades) > 0 else 0
         avg_loss = loss_trades['PNL'].mean() if len(loss_trades) > 0 else 0
         
-        percentile_90_profit = profitable_trades['PNL'].quantile(0.9) if len(profitable_trades) > 0 else 0
-        percentile_90_loss = abs(loss_trades['PNL'].quantile(0.1)) if len(loss_trades) > 0 else 0
-        
         # Calculate daily statistics
         df_trades = pd.DataFrame(self.trade_logs)
         df_trades['Date'] = pd.to_datetime(df_trades['Date'])
@@ -248,9 +244,6 @@ class DayTrader(ABC):
         
         avg_daily_profit = profitable_days.mean() if len(profitable_days) > 0 else 0
         avg_daily_loss = loss_days.mean() if len(loss_days) > 0 else 0
-        
-        percentile_90_daily_profit = profitable_days.quantile(0.9) if len(profitable_days) > 0 else 0
-        percentile_90_daily_loss = abs(loss_days.quantile(0.1)) if len(loss_days) > 0 else 0
 
         # Calculate stock-level metrics
         stock_metrics = self.calculate_stock_level_metrics()
@@ -261,18 +254,15 @@ class DayTrader(ABC):
             'initial_capital': round(self.initial_capital, 2),
             'capital_added': self.capital_added,
             'exit_reason_pct': f'SL: {round(100 * exit_reason_sl_count / len(trades_df), 2)}%, TP: {round(100 * exit_reason_tp_count / len(trades_df), 2)}%, EOD Profit: {round(100 * exit_reason_eod_profit_count / len(trades_df), 2)}%, EOD Loss: {round(100 * exit_reason_eod_loss_count / len(trades_df), 2)}%',
-            'final_equity': round(self.current_equity, 2),
+            'final_capital': round(self.current_capital, 2),
+            'capital_added': round(self.capital_added, 2),
             'profit': round(total_pnl, 2),
             'max_drawdown': round(self.max_drawdown, 2),
             'roi': round(roi, 2),
             'avg_profit_per_trade': round(avg_profit, 2),
             'avg_loss_per_trade': round(avg_loss, 2),
-            'percentile_90_profit_per_trade': round(percentile_90_profit, 2),
-            'percentile_90_loss_per_trade': round(percentile_90_loss, 2),
             'avg_daily_profit': round(avg_daily_profit, 2),
             'avg_daily_loss': round(avg_daily_loss, 2),
-            'percentile_90_daily_profit': round(percentile_90_daily_profit, 2),
-            'percentile_90_daily_loss': round(percentile_90_daily_loss, 2),
             'stock_stats': stock_metrics
         }
     
@@ -283,21 +273,18 @@ class DayTrader(ABC):
             'win_ratio': 0,
             'initial_capital': self.initial_capital,
             'capital_added': self.capital_added,
-            'final_equity': self.initial_capital,
+            'final_capital': self.initial_capital,
             'profit': 0,
             'max_drawdown': 0,
             'roi': 0,
             'avg_profit_per_trade': 0,
             'avg_loss_per_trade': 0,
-            'percentile_90_profit_per_trade': 0,
-            'percentile_90_loss_per_trade': 0,
             'avg_daily_profit': 0,
             'avg_daily_loss': 0,
-            'percentile_90_daily_profit': 0,
-            'percentile_90_daily_loss': 0,
             'stock_stats': {
                 'stocks': []
-            }
+            },
+            'exit_reason_pct': 'N/A'
         }
 
     def update_stock_stats(self, trade):
@@ -377,7 +364,3 @@ class DayTrader(ABC):
         return {
             'stocks': sorted_stocks.to_dict(orient='records')
         }
-
-    def set_top_n_stocks(self, n):
-        """Set the number of top stocks to track in each category"""
-        self.top_n = n 

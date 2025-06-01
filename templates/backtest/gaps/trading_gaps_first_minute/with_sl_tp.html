@@ -2,16 +2,15 @@
 
 {% block content %}
 <div class="strategy-description">
-    <h2>Trading First Minute of Gapped Stocks with Stop Loss and Take Profit</h2>
+    <h2>Trading overnight gapped stocks from open to nth minute</h2>
     <p>
-        This strategy trades the first minute of stocks that gap up or down. On a gap up, we short the stock at open 
-        and exit at the specified minute's open price. On a gap down, we go long at open and exit at the specified minute's open price. 
+        On a gap up, we short the stock at open and exit at the specified minute's open price. On a gap down, we go long at open and exit at the specified minute's open price. 
         The position will be closed earlier if stop loss or take profit is hit during any minute, or at the specified exit time.
     </p>
 </div>
 
 <div class="backtest-form mb-4">
-    <form method="GET" action="{{ url_for('gaps_first_minute_with_sl_tp') }}">
+    <form method="GET" action="{{ url_for('gaps_from_first_to_nth_minute_with_sl_tp') }}">
         <div class="row g-3">
             <div class="col-md-2">
                 <label for="from_date" class="form-label">From Date</label>
@@ -79,9 +78,14 @@
                     <td>₹{{ results.initial_capital_10L|indian_currency }}</td>
                 </tr>
                 <tr>
-                    <td>Final Equity</td>
-                    <td>₹{{ results.final_equity_1L|indian_currency }}</td>
-                    <td>₹{{ results.final_equity_10L|indian_currency }}</td>
+                    <td>Capital Added</td>
+                    <td>₹{{ results.capital_added_1L|indian_currency }}</td>
+                    <td>₹{{ results.capital_added_10L|indian_currency }}</td>
+                </tr>
+                <tr>
+                    <td>Final Capital</td>
+                    <td>₹{{ results.final_capital_1L|indian_currency }}</td>
+                    <td>₹{{ results.final_capital_10L|indian_currency }}</td>
                 </tr>
                 <tr>
                     <td>Profit</td>
@@ -109,16 +113,6 @@
                     <td>₹{{ results.avg_loss_per_trade_10L|indian_currency }}</td>
                 </tr>
                 <tr>
-                    <td>90th Percentile Profit per Trade</td>
-                    <td>₹{{ results.percentile_90_profit_per_trade_1L|indian_currency }}</td>
-                    <td>₹{{ results.percentile_90_profit_per_trade_10L|indian_currency }}</td>
-                </tr>
-                <tr>
-                    <td>90th Percentile Loss per Trade</td>
-                    <td>₹{{ results.percentile_90_loss_per_trade_1L|indian_currency }}</td>
-                    <td>₹{{ results.percentile_90_loss_per_trade_10L|indian_currency }}</td>
-                </tr>
-                <tr>
                     <td>Average Daily Profit</td>
                     <td>₹{{ results.avg_daily_profit_1L|indian_currency }}</td>
                     <td>₹{{ results.avg_daily_profit_10L|indian_currency }}</td>
@@ -127,16 +121,6 @@
                     <td>Average Daily Loss</td>
                     <td>₹{{ results.avg_daily_loss_1L|indian_currency }}</td>
                     <td>₹{{ results.avg_daily_loss_10L|indian_currency }}</td>
-                </tr>
-                <tr>
-                    <td>90th Percentile Daily Profit</td>
-                    <td>₹{{ results.percentile_90_daily_profit_1L|indian_currency }}</td>
-                    <td>₹{{ results.percentile_90_daily_profit_10L|indian_currency }}</td>
-                </tr>
-                <tr>
-                    <td>90th Percentile Daily Loss</td>
-                    <td>₹{{ results.percentile_90_daily_loss_1L|indian_currency }}</td>
-                    <td>₹{{ results.percentile_90_daily_loss_10L|indian_currency }}</td>
                 </tr>
             </tbody>
         </table>

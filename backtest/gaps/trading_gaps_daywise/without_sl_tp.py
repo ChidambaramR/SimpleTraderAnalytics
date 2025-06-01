@@ -1,162 +1,125 @@
-import pandas as pd
-from database.utils.db_utils import get_db_and_tables
-from ...utils.runner import run_backtest_with_cache
-from collections import defaultdict
+from ...framework.day_trader import DayTrader
+from math import floor
+from ...utils.fee_calculator import calculate_fees
 
-def _run_backtest(from_date, to_date, args={}):
-    """
-    Internal function that implements the actual backtest logic.
-    Processes data day by day to simulate real trading conditions.
-    """
-    try:
-        conn, tables = get_db_and_tables('day')
-        
-        # Initialize tracking variables
-        trades = []
-        total_trades = 0
-        wins = 0
-        current_drawdown_1x = 0
-        max_drawdown_1x = 0
-        peak_equity_1x = 0
-        current_equity_1x = 0
-        
-        from_date = f"{from_date} 00:00:00"
-        to_date = f"{to_date} 23:59:59"
+class DaywiseGapTrader(DayTrader):
+    def __init__(self, initial_capital=100000, args=None):
+        super().__init__(initial_capital)
+        self.gap_threshold = 3  # hardcoded as in original logic
+        self.top_n = (args or {}).get('top_n', 5)
+        self.slippage_pct = (args or {}).get('slippage_pct', 0.1)  # default 0.1%
+        self.args = args or {}
 
-        # Get all dates in the range
-        date_query = f"""
-        SELECT DISTINCT date(ts) as trade_date
-        FROM "{tables['name'].iloc[0]}"
-        WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
-        ORDER BY trade_date
-        """
-        trading_days = pd.read_sql_query(date_query, conn, params=(from_date, to_date))
+    def get_trade_plan(self, all_stocks, daily_data, prev_date, current_date):
+        gaps = []
+        for stock in all_stocks:
+            stock_data = daily_data[stock]
+            day_slice = stock_data[
+                (stock_data.index.date == prev_date.date()) |
+                (stock_data.index.date == current_date.date())
+            ]
 
-        # Process each trading day except the last one
-        for i in range(len(trading_days) - 1):
-            current_date = trading_days.iloc[i]['trade_date']
-            next_date = trading_days.iloc[i + 1]['trade_date']
-            
-            # Dictionary to store daily trades
-            daily_trades = []
+            if len(day_slice) < 2:
+                continue
 
-            # Check each stock for gaps
-            for table in tables['name']:
-                # Get data for current and next trading day
-                query = f"""
-                SELECT ts, open, close 
-                FROM "{table}"
-                WHERE date(ts) IN (?, ?)
-                ORDER BY ts
-                """
-                
-                df = pd.read_sql_query(query, conn, params=(current_date, next_date))
-                
-                if len(df) >= 2:  # Need at least 2 days of data
-                    prev_close = df.iloc[0]['close']
-                    current_open = df.iloc[1]['open']
-                    current_close = df.iloc[1]['close']
-                    
-                    # Calculate gap percentage
-                    gap_percent = (current_open - prev_close) / prev_close * 100
-                    
-                    # Check if gap meets our criteria (>= 3% or <= -3%)
-                    if abs(gap_percent) >= 3:
-                        trade = {
-                            'date': df.iloc[1]['ts'],
-                            'symbol': table,
-                            'open': current_open,
-                            'close': current_close,
-                            'gap_percent': gap_percent,
-                            'direction': 'SHORT' if gap_percent > 0 else 'LONG'
-                        }
-                        
-                        # Calculate P&L
-                        if gap_percent > 0:  # Gap Up - Short
-                            trade['pnl'] = current_open - current_close
-                        else:  # Gap Down - Long
-                            trade['pnl'] = current_close - current_open
-                        
-                        trade['pnl_percentage'] = (trade['pnl'] / current_open) * 100
-                        daily_trades.append(trade)
-            
-            # Process daily trades
-            for trade in daily_trades:
-                trades.append(trade)
-                total_trades += 1
-                if trade['pnl'] > 0:
-                    wins += 1
-                
-                # Track equity and drawdown (1x leverage)
-                current_equity_1x += trade['pnl']
-                peak_equity_1x = max(peak_equity_1x, current_equity_1x)
-                current_drawdown_1x = peak_equity_1x - current_equity_1x
-                max_drawdown_1x = max(max_drawdown_1x, current_drawdown_1x)
-        
-        conn.close()
-        
-        # Ensure we have trades before calculating statistics
-        if not trades:
-            return {
-                'total_trades': 0,
-                'win_ratio': 0,
-                'total_invested': 0,
-                'profit_1x': 0,
-                'profit_5x': 0,
-                'max_drawdown_1x': 0,
-                'max_drawdown_5x': 0,
-                'roi_1x': 0,
-                'roi_5x': 0
-            }
-            
-        # Convert trades to DataFrame for analysis
-        trades_df = pd.DataFrame(trades)
-        
-        # Calculate final statistics
-        win_ratio = (wins / total_trades * 100) if total_trades > 0 else 0
-        total_invested = trades_df['open'].sum()
-        total_pnl_1x = trades_df['pnl'].sum()
-        total_pnl_5x = total_pnl_1x * 5  # 5x leverage
-        max_drawdown_5x = max_drawdown_1x * 5
-        
-        # Calculate ROI
-        roi_1x = (total_pnl_1x / total_invested * 100) if total_invested > 0 else 0
-        roi_5x = (total_pnl_5x / total_invested * 100) if total_invested > 0 else 0
-        
-        return {
-            'total_trades': total_trades,
-            'win_ratio': round(win_ratio, 2),
-            'total_invested': round(total_invested, 2),
-            'profit_1x': round(total_pnl_1x, 2),
-            'profit_5x': round(total_pnl_5x, 2),
-            'max_drawdown_1x': round(max_drawdown_1x, 2),
-            'max_drawdown_5x': round(max_drawdown_5x, 2),
-            'roi_1x': round(roi_1x, 2),
-            'roi_5x': round(roi_5x, 2)
+            prev_close = day_slice.iloc[0]['close']
+            current_open = day_slice.iloc[1]['open']
+
+            gap_percent = (current_open - prev_close) / prev_close * 100
+            if abs(gap_percent) >= self.gap_threshold:
+                gaps.append({
+                    'symbol': stock,
+                    'gap_percent': gap_percent,
+                    'abs_gap_percent': abs(gap_percent),
+                    'prev_close': prev_close,
+                    'open': current_open
+                })
+
+        gaps.sort(key=lambda x: x['abs_gap_percent'], reverse=True)
+        selected = gaps[:self.top_n]
+        if not selected:
+            return {}
+
+        per_stock_capital = self.current_capital / len(selected)
+        plan = {g['symbol']: per_stock_capital for g in selected}
+
+        return plan
+
+    def generate_trades(self, stock, day_data, minute_data, available_capital):
+        if len(day_data) < 2:
+            return []
+
+        prev_close = day_data.iloc[0]['close']
+        current_open = day_data.iloc[1]['open']
+        current_close = day_data.iloc[1]['close']
+
+        gap_percent = (current_open - prev_close) / prev_close * 100
+
+        quantity = floor(available_capital / current_open)
+        if quantity == 0:
+            return []
+
+        direction = 'SHORT' if gap_percent > 0 else 'LONG'
+
+        # Apply slippage
+        slippage = self.slippage_pct / 100
+        if direction == 'LONG':
+            entry_price = current_open * (1 + slippage)
+            exit_price = current_close * (1 - slippage)
+        else:
+            entry_price = current_open * (1 - slippage)
+            exit_price = current_close * (1 + slippage)
+
+        if direction == 'SHORT':
+            pnl = (entry_price - exit_price) * quantity
+        else:
+            pnl = (exit_price - entry_price) * quantity
+
+        entry_value = quantity * entry_price
+        exit_value = quantity * exit_price
+        fees = calculate_fees(entry_value, exit_value, direction)
+        net_pnl = pnl - fees['total']
+
+        trade = {
+            'Symbol': stock,
+            'Date': day_data.index[1],
+            'Entry price': entry_price,
+            'Exit price': exit_price,
+            'Quantity': quantity,
+            'Position': direction,
+            'Gap %': gap_percent,
+            'PNL': net_pnl,
+            'Gross PNL': pnl,
+            'Fees': fees['total'],
+            'Slippage %': self.slippage_pct,
+            'Exit reason': 'EOD',
         }
-        
-    except Exception as e:
-        return {
-            'error': f"Error in backtest: {str(e)}",
-            'total_trades': 0,
-            'win_ratio': 0,
-            'total_invested': 0,
-            'profit_1x': 0,
-            'profit_5x': 0,
-            'max_drawdown_1x': 0,
-            'max_drawdown_5x': 0,
-            'roi_1x': 0,
-            'roi_5x': 0
-        }
+        return [trade]
 
 def run_backtest(from_date, to_date, args={}):
-    """
-    Public interface for running the backtest with caching support.
-    """
-    strategy_name = 'gaps_trading_daywise_without_sl_tp'
-    return run_backtest_with_cache(
-        strategy_name=strategy_name,
-        from_date=from_date,
-        to_date=to_date,
-        backtest_func=_run_backtest
-    ) 
+    results_1L = DaywiseGapTrader(initial_capital=100000, args=args).run_backtest(from_date, to_date)
+    results_10L = DaywiseGapTrader(initial_capital=1000000, args=args).run_backtest(from_date, to_date)
+    return {
+        'total_trades': results_1L['total_trades'],
+        'win_ratio': results_1L['win_ratio'],
+        'initial_capital_1L': results_1L['initial_capital'],
+        'initial_capital_10L': results_10L['initial_capital'],
+        'capital_added_1L': results_1L['capital_added'],
+        'capital_added_10L': results_10L['capital_added'],
+        'final_capital_1L': results_1L['final_capital'],
+        'final_capital_10L': results_10L['final_capital'],
+        'profit_1L': results_1L['profit'],
+        'profit_10L': results_10L['profit'],
+        'max_drawdown_1L': results_1L['max_drawdown'],
+        'max_drawdown_10L': results_10L['max_drawdown'],
+        'roi_1L': results_1L['roi'],
+        'roi_10L': results_10L['roi'],
+        'avg_profit_per_trade_1L': results_1L['avg_profit_per_trade'],
+        'avg_profit_per_trade_10L': results_10L['avg_profit_per_trade'],
+        'avg_loss_per_trade_1L': results_1L['avg_loss_per_trade'],
+        'avg_loss_per_trade_10L': results_10L['avg_loss_per_trade'],
+        'avg_daily_profit_1L': results_1L['avg_daily_profit'],
+        'avg_daily_profit_10L': results_10L['avg_daily_profit'],
+        'avg_daily_loss_1L': results_1L['avg_daily_loss'],
+        'avg_daily_loss_10L': results_10L['avg_daily_loss'],
+    } 
