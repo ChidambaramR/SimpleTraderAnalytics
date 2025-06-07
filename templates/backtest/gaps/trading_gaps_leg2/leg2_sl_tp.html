@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "backtest/gaps/base_results.html" %}
 
-{% block content %}
+{% block strategy_description %}
 <div class="strategy-description">
     <h2>Trading Leg2 from specified minute till end of the day, with Stop Loss and Take Profit</h2>
     <p>
@@ -10,7 +10,9 @@
         <br/>Similarly conditional entry/exit for gap down.
     </p>
 </div>
+{% endblock %}
 
+{% block backtest_form %}
 <div class="backtest-form mb-4">
     <form method="GET" action="{{ url_for('gaps_leg2_sl_tp') }}">
         <div class="row g-3">
@@ -58,7 +60,9 @@
         </div>
     </form>
 </div>
+{% endblock %}
 
+{% block summary_tables %}
 {% if results %}
     {% if results.error %}
     <div class="alert alert-danger" role="alert">
@@ -126,7 +130,6 @@
             </tbody>
         </table>
     </div>
-
     <!-- Stock Level Statistics -->
     <div class="results-section mt-4">
         <h3>Stock Level Statistics</h3>
@@ -177,290 +180,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Trade Level Statistics -->
-    <div class="d-flex align-items-center mb-2">
-        <h3 class="me-3">Trade Level Statistics</h3>
-        <button id="showProfitCharts" class="btn btn-success btn-sm me-2">Show all profit graphs</button>
-        <button id="showLossCharts" class="btn btn-danger btn-sm">Show all loss stock graphs</button>
-    </div>
-    <div class="results-section mt-4">
-        <div class="table-responsive">
-            <table class="table table-striped table-sm" id="tradeTable1L">
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>PNL</th>
-                        <th>Entry Type</th>
-                        <th>Entry Time</th>
-                        <th>Exit Type</th>
-                        <th>Exit Time</th>
-                        <th>Gap Type</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for trade in results.trade_stats %}
-                    <tr>
-                        <td class="trade-symbol-cell"
-                            data-symbol="{{ trade.Symbol }}"
-                            data-entry-time="{{ trade['Entry Time'] }}"
-                            data-exit-time="{{ trade['Exit Time'] }}"
-                            data-position="{{ trade.Position }}"
-                            style="cursor:pointer; text-decoration:underline; color:#007bff;">
-                            {{ trade.Symbol }}
-                        </td>
-                        <td class="{% if trade.PNL > 0 %}text-success{% elif trade.PNL < 0 %}text-danger{% endif %}">₹{{ trade.PNL|indian_currency }}</td>
-                        <td>{{ trade['Entry Type'] }}</td>
-                        <td>{{ trade['Entry Time'] }}</td>
-                        <td>{{ trade['Exit Type'] }}</td>
-                        <td>{{ trade['Exit Time'] }}</td>
-                        <td>{{ trade['Gap Type'] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <!-- Trade Chart Display -->
-    <div id="tradeChartDiv" style="display:none; margin-top:30px; text-align:center;">
-        <img id="tradeChartImg" src="" alt="Trade Chart" style="width:100vw; height:auto;">
-    </div>
-    <style>
-        .sortable {
-            cursor: pointer;
-            user-select: none;
-        }
-        .sortable:hover {
-            background-color: #f8f9fa;
-        }
-        .sort-icon {
-            font-size: 0.8em;
-            margin-left: 5px;
-            color: #999;
-        }
-        .sort-asc .sort-icon::after {
-            content: "↑";
-        }
-        .sort-desc .sort-icon::after {
-            content: "↓";
-        }
-        .sort-asc .sort-icon, .sort-desc .sort-icon {
-            color: #000;
-        }
-    </style>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Pagination configuration
-            const itemsPerPage = 10;
-            let currentSortColumn = null;
-            let isAscending = true;
-            
-            // Initialize sorting
-            function initializeSorting() {
-                const headers = document.querySelectorAll('.sortable');
-                headers.forEach(header => {
-                    header.addEventListener('click', () => {
-                        const column = header.getAttribute('data-sort');
-                        
-                        // Toggle sort direction if clicking the same column
-                        if (currentSortColumn === column) {
-                            isAscending = !isAscending;
-                        } else {
-                            currentSortColumn = column;
-                            isAscending = true;
-                        }
-                        
-                        // Update sort icons
-                        headers.forEach(h => {
-                            h.classList.remove('sort-asc', 'sort-desc');
-                        });
-                        header.classList.add(isAscending ? 'sort-asc' : 'sort-desc');
-                        
-                        sortTable(column, isAscending);
-                    });
-                });
-            }
-            
-            // Sort table
-            function sortTable(column, ascending) {
-                const tbody = document.querySelector('#stockTable1L tbody');
-                const rows = Array.from(tbody.querySelectorAll('tr'));
-                
-                // Find the index of the column we're sorting by
-                const headers = document.querySelectorAll('#stockTable1L th');
-                const columnIndex = Array.from(headers).findIndex(header => header.getAttribute('data-sort') === column);
-                
-                if (columnIndex === -1) return; // Column not found
-                
-                rows.sort((a, b) => {
-                    const aCell = a.querySelectorAll('td')[columnIndex];
-                    const bCell = b.querySelectorAll('td')[columnIndex];
-                    
-                    let aVal = aCell.getAttribute('data-value');
-                    let bVal = bCell.getAttribute('data-value');
-                    
-                    // Convert to numbers if possible
-                    if (!isNaN(aVal) && !isNaN(bVal)) {
-                        aVal = parseFloat(aVal);
-                        bVal = parseFloat(bVal);
-                    } else {
-                        // For text values, use case-insensitive comparison
-                        aVal = aVal.toLowerCase();
-                        bVal = bVal.toLowerCase();
-                    }
-                    
-                    if (aVal < bVal) return ascending ? -1 : 1;
-                    if (aVal > bVal) return ascending ? 1 : -1;
-                    return 0;
-                });
-                
-                // Clear table
-                while (tbody.firstChild) {
-                    tbody.removeChild(tbody.firstChild);
-                }
-                
-                // Add sorted rows
-                rows.forEach(row => tbody.appendChild(row));
-                
-                // Reset pagination to first page
-                showPage(1);
-            }
-            
-            // Initialize pagination
-            function initializePagination() {
-                const rows = document.querySelectorAll('.stock-row-1L');
-                const totalItems = rows.length;
-                const totalPages = Math.ceil(totalItems / itemsPerPage);
-                
-                // Update total items count
-                document.getElementById('totalItems1L').textContent = totalItems;
-                
-                // Generate pagination buttons
-                const pagination = document.getElementById('pagination1L');
-                pagination.innerHTML = '';
-                
-                // Previous button
-                const prevLi = document.createElement('li');
-                prevLi.className = 'page-item';
-                prevLi.innerHTML = '<a class="page-link" href="#" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>';
-                pagination.appendChild(prevLi);
-                
-                // Page numbers
-                for (let i = 1; i <= totalPages; i++) {
-                    const li = document.createElement('li');
-                    li.className = 'page-item';
-                    li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
-                    pagination.appendChild(li);
-                }
-                
-                // Next button
-                const nextLi = document.createElement('li');
-                nextLi.className = 'page-item';
-                nextLi.innerHTML = '<a class="page-link" href="#" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>';
-                pagination.appendChild(nextLi);
-                
-                // Show first page by default
-                showPage(1);
-                
-                // Add click handlers
-                pagination.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    if (e.target.tagName === 'A') {
-                        const pageText = e.target.textContent;
-                        let newPage;
-                        
-                        if (pageText === '«') {
-                            const currentPage = getCurrentPage();
-                            newPage = Math.max(1, currentPage - 1);
-                        } else if (pageText === '»') {
-                            const currentPage = getCurrentPage();
-                            newPage = Math.min(totalPages, currentPage + 1);
-                        } else {
-                            newPage = parseInt(pageText);
-                        }
-                        
-                        showPage(newPage);
-                    }
-                });
-            }
-            
-            // Show specific page
-            function showPage(pageNumber) {
-                const rows = document.querySelectorAll('.stock-row-1L');
-                const startIndex = (pageNumber - 1) * itemsPerPage;
-                const endIndex = Math.min(startIndex + itemsPerPage, rows.length);
-                
-                // Update page indicators
-                document.getElementById('startIndex1L').textContent = startIndex + 1;
-                document.getElementById('endIndex1L').textContent = endIndex;
-                
-                // Hide all rows
-                rows.forEach(row => row.style.display = 'none');
-                
-                // Show rows for current page
-                for (let i = startIndex; i < endIndex; i++) {
-                    rows[i].style.display = '';
-                }
-                
-                // Update active page in pagination
-                updateActivePage(pageNumber);
-            }
-            
-            // Update active page in pagination
-            function updateActivePage(pageNumber) {
-                const pagination = document.getElementById('pagination1L');
-                const pages = pagination.getElementsByClassName('page-item');
-                
-                Array.from(pages).forEach(page => {
-                    page.classList.remove('active');
-                    const link = page.getElementsByClassName('page-link')[0];
-                    if (link && link.textContent === pageNumber.toString()) {
-                        page.classList.add('active');
-                    }
-                });
-            }
-            
-            // Get current active page
-            function getCurrentPage() {
-                const pagination = document.getElementById('pagination1L');
-                const activePage = pagination.querySelector('.active .page-link');
-                return activePage ? parseInt(activePage.textContent) : 1;
-            }
-            
-            // Initialize both pagination and sorting
-            initializePagination();
-            initializeSorting();
-
-            // Trade chart click handler
-            document.querySelectorAll('.trade-symbol-cell').forEach(cell => {
-                cell.addEventListener('click', function() {
-                    const symbol = this.getAttribute('data-symbol');
-                    const entryTime = this.getAttribute('data-entry-time');
-                    const exitTime = this.getAttribute('data-exit-time');
-                    const position = this.getAttribute('data-position');
-                    fetch(`/gaps/trade_chart?symbol=${encodeURIComponent(symbol)}&entry_time=${encodeURIComponent(entryTime)}&exit_time=${encodeURIComponent(exitTime)}&position=${encodeURIComponent(position)}`)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.image_url) {
-                                document.getElementById('tradeChartImg').src = data.image_url;
-                                document.getElementById('tradeChartDiv').style.display = 'block';
-                            } else {
-                                document.getElementById('tradeChartImg').src = '';
-                                document.getElementById('tradeChartDiv').style.display = 'none';
-                                alert('No chart available for this trade.');
-                            }
-                        });
-                });
-            });
-            // Profit/Loss chart grid buttons
-            document.getElementById('showProfitCharts').addEventListener('click', function() {
-                window.open('/gaps/trade_charts_grid?filter=profit', '_blank');
-            });
-            document.getElementById('showLossCharts').addEventListener('click', function() {
-                window.open('/gaps/trade_charts_grid?filter=loss', '_blank');
-            });
-        });
-    </script>
     {% endif %}
 {% endif %}
 {% endblock %} 

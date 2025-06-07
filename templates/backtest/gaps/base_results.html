@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+    {% block strategy_description %}{% endblock %}
+    {% block backtest_form %}{% endblock %}
+    {% block summary_tables %}{% endblock %}
+
+    <!-- Common Trade Level Statistics Section -->
+    <div class="d-flex align-items-center mb-2">
+        <h3 class="me-3">Trade Level Statistics</h3>
+        <button id="showProfitCharts" class="btn btn-success btn-sm me-2">Show all profit graphs</button>
+        <button id="showLossCharts" class="btn btn-danger btn-sm">Show all loss stock graphs</button>
+    </div>
+    <div class="results-section mt-4">
+        <div class="table-responsive">
+            <table class="table table-striped table-sm" id="tradeTable1L">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>PNL</th>
+                        <th>Entry Type</th>
+                        <th>Entry Time</th>
+                        <th>Exit Type</th>
+                        <th>Exit Time</th>
+                        <th>Gap Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trade in results.trade_stats %}
+                    <tr>
+                        <td class="trade-symbol-cell"
+                            data-symbol="{{ trade.Symbol }}"
+                            data-entry-time="{{ trade['Entry Time'] }}"
+                            data-exit-time="{{ trade['Exit Time'] }}"
+                            data-position="{{ trade.Position }}"
+                            style="cursor:pointer; text-decoration:underline; color:#007bff;">
+                            {{ trade.Symbol }}
+                        </td>
+                        <td class="{% if trade.PNL > 0 %}text-success{% elif trade.PNL < 0 %}text-danger{% endif %}">₹{{ trade.PNL|indian_currency }}</td>
+                        <td>{{ trade['Entry Type'] }}</td>
+                        <td>{{ trade['Entry Time'] }}</td>
+                        <td>{{ trade['Exit Type'] }}</td>
+                        <td>{{ trade['Exit Time'] }}</td>
+                        <td>{{ trade['Gap Type'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <!-- Trade Chart Display -->
+    <div id="tradeChartDiv" style="display:none; margin-top:30px; text-align:center;">
+        <img id="tradeChartImg" src="" alt="Trade Chart" style="width:100vw; height:auto;">
+    </div>
+    <style>
+        .sortable { cursor: pointer; user-select: none; }
+        .sortable:hover { background-color: #f8f9fa; }
+        .sort-icon { font-size: 0.8em; margin-left: 5px; color: #999; }
+        .sort-asc .sort-icon::after { content: "↑"; }
+        .sort-desc .sort-icon::after { content: "↓"; }
+        .sort-asc .sort-icon, .sort-desc .sort-icon { color: #000; }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Trade chart click handler
+            document.querySelectorAll('.trade-symbol-cell').forEach(cell => {
+                cell.addEventListener('click', function() {
+                    const symbol = this.getAttribute('data-symbol');
+                    const entryTime = this.getAttribute('data-entry-time');
+                    const exitTime = this.getAttribute('data-exit-time');
+                    const position = this.getAttribute('data-position');
+                    fetch(`/gaps/trade_chart?symbol=${encodeURIComponent(symbol)}&entry_time=${encodeURIComponent(entryTime)}&exit_time=${encodeURIComponent(exitTime)}&position=${encodeURIComponent(position)}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.image_url) {
+                                document.getElementById('tradeChartImg').src = data.image_url;
+                                document.getElementById('tradeChartDiv').style.display = 'block';
+                            } else {
+                                document.getElementById('tradeChartImg').src = '';
+                                document.getElementById('tradeChartDiv').style.display = 'none';
+                                alert('No chart available for this trade.');
+                            }
+                        });
+                });
+            });
+            // Profit/Loss chart grid buttons
+            document.getElementById('showProfitCharts').addEventListener('click', function() {
+                window.open('/gaps/trade_charts_grid?filter=profit', '_blank');
+            });
+            document.getElementById('showLossCharts').addEventListener('click', function() {
+                window.open('/gaps/trade_charts_grid?filter=loss', '_blank');
+            });
+        });
+    </script>
+{% endblock %} 
