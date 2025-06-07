@@ -80,6 +80,14 @@ class DaywiseGapTrader(DayTrader):
         fees = calculate_fees(entry_value, exit_value, direction)
         net_pnl = pnl - fees['total']
 
+        # Determine entry_time and exit_time from minute_data if available
+        if minute_data is not None and not minute_data.empty:
+            entry_time = minute_data.index[0]
+            exit_time = minute_data.index[-1]
+        else:
+            entry_time = day_data.index[1]
+            exit_time = day_data.index[1]
+
         trade = {
             'Symbol': stock,
             'Date': day_data.index[1],
@@ -93,11 +101,15 @@ class DaywiseGapTrader(DayTrader):
             'Fees': fees['total'],
             'Slippage %': self.slippage_pct,
             'Exit reason': 'EOD',
+            'entry_time': entry_time,
+            'exit_time': exit_time,
         }
         return [trade]
 
 def run_backtest(from_date, to_date, initial_capital=100000, args={}):
-    results = DaywiseGapTrader(initial_capital=initial_capital, args=args).run_backtest(from_date, to_date)
+    trader = DaywiseGapTrader(initial_capital=initial_capital, args=args)
+    results = trader.run_backtest(from_date, to_date)
+    trade_stats = trader.calculate_trade_level_metrics()
     return {
         'total_trades': results['total_trades'],
         'win_ratio': results['win_ratio'],
@@ -112,4 +124,5 @@ def run_backtest(from_date, to_date, initial_capital=100000, args={}):
         'avg_daily_profit': results['avg_daily_profit'],
         'avg_daily_loss': results['avg_daily_loss'],
         'stock_stats': results['stock_stats'],
+        'trade_stats': trade_stats,
     } 

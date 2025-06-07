@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify, url_for, current_app
 from database.gap_queries.queries import (
     analyze_daily_total_gaps,
     analyze_daily_gap_closures,
@@ -15,8 +15,19 @@ from datetime import datetime
 from backtest.gaps.trading_gaps_daywise.without_sl_tp import run_backtest as run_backtest_daywise_without_sl_tp
 from backtest.gaps.trading_gaps_first_minute.with_sl_tp import run_backtest as run_backtest_first_minute_with_sl_tp
 from backtest.gaps.trading_gaps_leg2.with_sl_tp_leg2 import run_backtest as run_backtest_leg2
+from database.utils.db_utils import get_db_and_tables, get_minute_data_for_symbol
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+import math
+import matplotlib.dates as mdates
+import numpy as np
 
 app = Flask(__name__)
+
+# Global variable to store last trade_stats for grid view
+last_trade_stats = []
 
 def format_indian_currency(amount):
     """
@@ -100,6 +111,7 @@ def gaps_without_sl_tp():
         return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html', results=None)
     
     results = run_backtest_daywise_without_sl_tp(from_date, to_date, initial_capital=initial_capital)
+    global last_trade_stats; last_trade_stats = results['trade_stats']
     return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_from_first_to_nth_minute/run_test')
@@ -117,6 +129,7 @@ def gaps_from_first_to_nth_minute_with_sl_tp():
         return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html', results=None)
     
     results = run_backtest_first_minute_with_sl_tp(from_date, to_date, initial_capital=initial_capital, args=args)
+    global last_trade_stats; last_trade_stats = results['trade_stats']
     return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_leg2/run_test')
@@ -135,6 +148,7 @@ def gaps_leg2_sl_tp():
         return render_template('backtest/gaps/trading_gaps_leg2/leg2_sl_tp.html', results=None)
     
     results = run_backtest_leg2(from_date, to_date, initial_capital=initial_capital, args=args)
+    global last_trade_stats; last_trade_stats = results['trade_stats']
     return render_template('backtest/gaps/trading_gaps_leg2/leg2_sl_tp.html', results=results)
 
 @app.route('/analyze/gaps/first-minute', methods=['GET', 'POST'])
@@ -382,6 +396,98 @@ def analyze_in_market_ticks():
                              logs=logs)
     
     return render_template('analyze/in_market_ticks.html', date=date, symbol=symbol)
+
+@app.route('/gaps/trade_chart')
+def trade_chart():
+    symbol = request.args.get('symbol')
+    entry_time = request.args.get('entry_time')
+    exit_time = request.args.get('exit_time')
+    position = request.args.get('position', 'LONG').upper()  # Default to LONG if not provided
+    if not (symbol and entry_time and exit_time):
+        return jsonify({'error': 'Missing parameters'}), 400
+
+    if position == 'SHORT':
+        entry_color = 'red'   # Sell
+        exit_color = 'green'  # Buy
+    else:
+        entry_color = 'green' # Buy
+        exit_color = 'red'    # Sell
+
+    entry_dt = pd.to_datetime(entry_time)
+    exit_dt = pd.to_datetime(exit_time)
+    minute_data = get_minute_data_for_symbol(symbol, entry_dt.date())
+    if minute_data is None or minute_data.empty:
+        return jsonify({'error': 'No minute data found'}), 404
+
+    # Get entry and exit prices
+    entry_row = minute_data.loc[minute_data.index == entry_dt]
+    exit_row = minute_data.loc[minute_data.index == exit_dt]
+    entry_price = entry_row['open'].iloc[0] if not entry_row.empty else None
+    exit_price = exit_row['close'].iloc[0] if not exit_row.empty else None
+
+    # Create Series for buy/sell markers
+    buy_marker_series = pd.Series(np.nan, index=minute_data.index)
+    sell_marker_series = pd.Series(np.nan, index=minute_data.index)
+    if entry_price is not None and entry_dt in minute_data.index:
+        buy_marker_series[entry_dt] = float(entry_price)
+    if exit_price is not None and exit_dt in minute_data.index:
+        sell_marker_series[exit_dt] = float(exit_price)
+
+    apds = []
+    if not buy_marker_series.isna().all():
+        apds.append(mpf.make_addplot(buy_marker_series, type='scatter', marker='o', markersize=200, color=entry_color, label='ENTRY'))
+    if not sell_marker_series.isna().all():
+        apds.append(mpf.make_addplot(sell_marker_series, type='scatter', marker='o', markersize=200, color=exit_color, label='EXIT'))
+
+    img_dir = os.path.join(current_app.root_path, 'static', 'charts')
+    os.makedirs(img_dir, exist_ok=True)
+    img_filename = f'{symbol}_{entry_dt.strftime("%Y%m%d%H%M")}_{exit_dt.strftime("%Y%m%d%H%M")}_fullday_candle.png'
+    img_path = os.path.join(img_dir, img_filename)
+
+    mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
+    s = mpf.make_mpf_style(marketcolors=mc)
+
+    mpf.plot(
+        minute_data,
+        type='candle',
+        style=s,
+        addplot=apds if apds else None,
+        title=f'{symbol} Trade: {entry_dt.strftime("%Y-%m-%d %H:%M")} to {exit_dt.strftime("%Y-%m-%d %H:%M")}, Full Day',
+        ylabel='Price',
+        ylabel_lower='',
+        figsize=(18, 6),
+        savefig=dict(fname=img_path, dpi=100, bbox_inches='tight', pad_inches=0.1)
+    )
+    image_url = url_for('static', filename=f'charts/{img_filename}')
+    return jsonify({'image_url': image_url})
+
+@app.route('/gaps/trade_charts_grid')
+def trade_charts_grid():
+    filter_type = request.args.get('filter', 'profit')
+    global last_trade_stats
+    if not last_trade_stats:
+        return 'No trade data available. Please run a backtest first.', 400
+    if filter_type == 'profit':
+        filtered_trades = [t for t in last_trade_stats if t['PNL'] > 0]
+    else:
+        filtered_trades = [t for t in last_trade_stats if t['PNL'] <= 0]
+    chart_urls = []
+    with app.test_request_context():
+        client = app.test_client()
+        for trade in filtered_trades:
+            params = {
+                'symbol': trade['Symbol'],
+                'entry_time': trade['Entry Time'],
+                'exit_time': trade['Exit Time'],
+                'position': trade['Position']
+            }
+            chart_endpoint = url_for('trade_chart', **params)
+            response = client.get(chart_endpoint)
+            if response.status_code == 200:
+                data = response.get_json()
+                if data and 'image_url' in data:
+                    chart_urls.append(data['image_url'])
+    return render_template('backtest/gaps/trade_charts_grid.html', chart_urls=chart_urls, filter_type=filter_type)
 
 if __name__ == '__main__':
     app.run(debug=True)

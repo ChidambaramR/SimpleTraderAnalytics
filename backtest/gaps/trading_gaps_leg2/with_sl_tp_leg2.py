@@ -99,8 +99,10 @@ class Leg2GapTrader(DayTrader):
             'Date': minute_data.index[0],
             'Quantity': quantity,
             'Position': 'SHORT' if gap_percent > 0 else 'LONG',
-            'Gap %': gap_percent
+            'Gap %': gap_percent,
+            'entry_time': minute_data.index[minutes_to_enter],
         }
+        exit_time = None
 
         sl_slippage_pct = 0.5
         tp_slippage_pct = 0.25
@@ -117,14 +119,17 @@ class Leg2GapTrader(DayTrader):
                 if float(current_minute['high']) >= stop_loss_price:
                     trade['Exit price'] = sl_exit_price
                     trade['Exit reason'] = 'Stop Loss'
+                    exit_time = minute_data.index[i]
                     break
                 elif float(current_minute['low']) <= take_profit_price:
                     trade['Exit price'] = tp_exit_price
                     trade['Exit reason'] = 'Take Profit'
+                    exit_time = minute_data.index[i]
                     break
                 elif i == minutes_to_exit - 1:
                     trade['Exit price'] = float(current_minute['close'])
                     trade['Exit reason'] = 'Time Exit With Profit' if current_minute['close'] < entry_price else 'Time Exit With Loss'
+                    exit_time = minute_data.index[i]
                     break
         elif gap_percent < 0 \
             and first_min_close < first_min_open and recent_min_close < first_min_open and abs_pct_diff > threshold_pct:
@@ -138,18 +143,24 @@ class Leg2GapTrader(DayTrader):
                 if float(current_minute['low']) <= stop_loss_price:
                     trade['Exit price'] = sl_exit_price
                     trade['Exit reason'] = 'Stop Loss'
+                    exit_time = minute_data.index[i]
                     break
                 elif float(current_minute['high']) >= take_profit_price:
                     trade['Exit price'] = tp_exit_price
                     trade['Exit reason'] = 'Take Profit'
+                    exit_time = minute_data.index[i]
                     break
                 elif i == minutes_to_exit - 1:
                     trade['Exit price'] = float(current_minute['close'])
                     trade['Exit reason'] = 'Time Exit With Profit' if current_minute['close'] > entry_price else 'Time Exit With Loss'
+                    exit_time = minute_data.index[i]
                     break
 
         if 'Exit price' not in trade:
             return []
+
+        if exit_time is not None:
+            trade['exit_time'] = exit_time
 
         entry_value = quantity * entry_price
         exit_value = quantity * trade['Exit price']
@@ -167,7 +178,9 @@ class Leg2GapTrader(DayTrader):
         return [trade]
 
 def run_backtest(from_date, to_date, initial_capital=100000, args={}):
-    results = Leg2GapTrader(initial_capital=initial_capital, args=args).run_backtest(from_date, to_date)
+    trader = Leg2GapTrader(initial_capital=initial_capital, args=args)
+    results = trader.run_backtest(from_date, to_date)
+    trade_stats = trader.calculate_trade_level_metrics()
     return {
         'total_trades': results['total_trades'],
         'win_ratio': results['win_ratio'],
@@ -181,5 +194,6 @@ def run_backtest(from_date, to_date, initial_capital=100000, args={}):
         'avg_loss_per_trade': results['avg_loss_per_trade'],
         'avg_daily_profit': results['avg_daily_profit'],
         'avg_daily_loss': results['avg_daily_loss'],
-        'stock_stats': results['stock_stats']
+        'stock_stats': results['stock_stats'],
+        'trade_stats': trade_stats,
     }

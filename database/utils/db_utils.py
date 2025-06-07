@@ -92,3 +92,27 @@ def close_all_connections(connections):
             connections.close()
     except Exception as e:
         raise Exception(f"Error closing connections: {str(e)}") 
+    
+def get_minute_data_for_symbol(symbol, date):
+    """
+    Fetch minute data for a specific stock and date.
+    Returns a DataFrame indexed by 'ts'.
+    """
+    minute_connections = get_db_and_tables('minute')
+    try:
+        if symbol in minute_connections:
+            minute_conn = minute_connections[symbol]
+            query = f"""
+            SELECT ts, open, high, low, close, volume
+            FROM "{symbol}"
+            WHERE date(ts) = ?
+            ORDER BY ts
+            """
+            df = pd.read_sql_query(query, minute_conn, params=(date.strftime('%Y-%m-%d'),))
+            df['ts'] = pd.to_datetime(df['ts'])
+            df.set_index('ts', inplace=True)
+            return df
+        return None
+    finally:
+        for conn in set(minute_connections.values()):
+            conn.close()

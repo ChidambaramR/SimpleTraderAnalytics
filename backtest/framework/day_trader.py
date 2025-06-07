@@ -364,3 +364,24 @@ class DayTrader(ABC):
         return {
             'stocks': sorted_stocks.to_dict(orient='records')
         }
+
+    def calculate_trade_level_metrics(self):
+        """Return trade-level statistics for all trades with required columns."""
+        trade_stats = []
+        for trade in self.trades:
+            entry_type = 'Buy' if trade.get('Position') == 'LONG' else 'Short'
+            exit_type = 'Sell' if trade.get('Position') == 'LONG' else 'Buy'
+            entry_time = trade.get('entry_time')
+            exit_time = trade.get('exit_time')
+            gap_type = 'Up' if trade.get('Gap %', 0) > 0 else 'Down'
+            trade_stats.append({
+                'Symbol': trade.get('Symbol', ''),
+                'PNL': trade.get('PNL', 0),
+                'Entry Type': entry_type,
+                'Entry Time': entry_time.strftime('%Y-%m-%d %H:%M') if hasattr(entry_time, 'strftime') else str(entry_time),
+                'Exit Type': exit_type,
+                'Exit Time': exit_time,
+                'Position': trade.get('Position'),
+                'Gap Type': gap_type
+            })
+        return trade_stats

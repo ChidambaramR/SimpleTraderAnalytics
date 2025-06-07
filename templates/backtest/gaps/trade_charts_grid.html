@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ 'Profit' if filter_type == 'profit' else 'Loss' }} Trades Charts</h2>
+<div class="container">
+    <div class="row">
+        {% for url in chart_urls %}
+        <div class="col-md-6 mb-4">
+            <img src="{{ url }}" class="img-fluid" style="width:100%;height:auto;" />
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %} 
