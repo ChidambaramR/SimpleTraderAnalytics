@@ -59,24 +59,24 @@ def get_duckdb_minute_connection():
 
 def get_minute_data_for_symbol(symbol, date):
     """
-    Fetch minute data for a specific stock and date.
+    Fetch minute data for a specific stock and date using DuckDB.
     Returns a DataFrame indexed by 'ts'.
     """
-    minute_connections = get_db_and_tables('minute')
+    duckdb_conn = get_duckdb_minute_connection()
     try:
-        if symbol in minute_connections:
-            minute_conn = minute_connections[symbol]
-            query = f"""
-            SELECT ts, open, high, low, close, volume
-            FROM "{symbol}"
-            WHERE date(ts) = ?
-            ORDER BY ts
-            """
-            df = pd.read_sql_query(query, minute_conn, params=(date.strftime('%Y-%m-%d'),))
-            df['ts'] = pd.to_datetime(df['ts'])
-            df.set_index('ts', inplace=True)
-            return df
-        return None
+        query = f"""
+        SELECT ts, open, high, low, close, volume
+        FROM "{symbol}"
+        WHERE date(ts) = ?
+        ORDER BY ts
+        """
+        df = duckdb_conn.execute(query, (date.strftime('%Y-%m-%d'),)).fetchdf()
+        if df.empty:
+            return None
+        df['ts'] = pd.to_datetime(df['ts'])
+        df.set_index('ts', inplace=True)
+        return df
+    except Exception as e:
+        raise Exception(f"Error fetching minute data for {symbol} on {date}: {str(e)}")
     finally:
-        for conn in set(minute_connections.values()):
-            conn.close()
+        duckdb_conn.close()

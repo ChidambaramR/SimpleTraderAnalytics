@@ -124,7 +124,13 @@
     <div class="results-section mt-4">
         <h3>Stock Level Statistics</h3>
         <div class="table-responsive">
-            <table class="table table-striped table-sm" id="stockTable1L">
+            <table class="table table-striped table-sm paginated-sortable-table"
+                   id="stockTable1L"
+                   data-pagination-id="pagination1L"
+                   data-start-index-id="startIndex1L"
+                   data-end-index-id="endIndex1L"
+                   data-total-items-id="totalItems1L"
+                   data-rows-per-page="10">
                 <thead>
                     <tr>
                         <th class="sortable" data-sort="Symbol">Symbol <span class="sort-icon">↕</span></th>
@@ -151,7 +157,7 @@
                         <td data-value="{{ stock['Win Ratio'] }}">{{ '{:,.2f}'.format(stock['Win Ratio']) }}%</td>
                         <td data-value="{{ stock.Losses }}">{{ stock.Losses }}</td>
                         <td data-value="{{ stock['Loss Ratio'] }}">{{ '{:,.2f}'.format(stock['Loss Ratio']) }}%</td>
-                        <td data-value="{{ stock['Total PNL'] }}" class="{{ 'text-success' if stock['Total PNL'] > 0 else 'text-danger' }}">₹{{ stock['Total PNL']|indian_currency }}</td>
+                        <td data-value="{{ stock['Total PNL'] }}" class="{% if stock['Total PNL'] > 0 %}text-success{% else %}text-danger{% endif %}">₹{{ stock['Total PNL']|indian_currency }}</td>
                         <td data-value="{{ stock['Gap Up Trades'] }}">{{ stock['Gap Up Trades'] }}</td>
                         <td data-value="{{ stock['Gap Up Wins'] }}">{{ stock['Gap Up Wins'] }}</td>
                         <td data-value="{{ stock['Gap Up Losses'] }}">{{ stock['Gap Up Losses'] }}</td>
@@ -172,4 +178,8 @@
     </div>
     {% endif %}
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
 {% endblock %} 

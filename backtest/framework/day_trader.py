@@ -357,13 +357,8 @@ class DayTrader(ABC):
             
         stocks_df = pd.DataFrame(stats_list)
         
-        # Sort by absolute PNL to show both winners and losers
-        stocks_df['Abs PNL'] = stocks_df['Total PNL'].abs()
-        sorted_stocks = stocks_df.nlargest(self.top_n, 'Abs PNL')
-        sorted_stocks = sorted_stocks.drop('Abs PNL', axis=1)  # Remove the temporary column
-        
         return {
-            'stocks': sorted_stocks.to_dict(orient='records')
+            'stocks': stocks_df.to_dict(orient='records')
         }
 
     def calculate_trade_level_metrics(self):

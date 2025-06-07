@@ -112,6 +112,7 @@ def gaps_without_sl_tp():
     
     results = run_backtest_daywise_without_sl_tp(from_date, to_date, initial_capital=initial_capital)
     global last_trade_stats; last_trade_stats = results['trade_stats']
+    print("Stock stats:", results['stock_stats'])
     return render_template('backtest/gaps/trading_gaps_daywise/without_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_from_first_to_nth_minute/run_test')
@@ -130,6 +131,7 @@ def gaps_from_first_to_nth_minute_with_sl_tp():
     
     results = run_backtest_first_minute_with_sl_tp(from_date, to_date, initial_capital=initial_capital, args=args)
     global last_trade_stats; last_trade_stats = results['trade_stats']
+    print("Stock stats:", results['stock_stats'])
     return render_template('backtest/gaps/trading_gaps_first_minute/with_sl_tp.html', results=results)
 
 @app.route('/backtest/gaps/trading_gaps_leg2/run_test')
@@ -149,6 +151,7 @@ def gaps_leg2_sl_tp():
     
     results = run_backtest_leg2(from_date, to_date, initial_capital=initial_capital, args=args)
     global last_trade_stats; last_trade_stats = results['trade_stats']
+    print("Stock stats:", results['stock_stats'])
     return render_template('backtest/gaps/trading_gaps_leg2/leg2_sl_tp.html', results=results)
 
 @app.route('/analyze/gaps/first-minute', methods=['GET', 'POST'])

@@ -12,16 +12,22 @@
     </div>
     <div class="results-section mt-4">
         <div class="table-responsive">
-            <table class="table table-striped table-sm" id="tradeTable1L">
+            <table class="table table-striped table-sm paginated-sortable-table"
+                   id="tradeTable1L"
+                   data-pagination-id="paginationTrade1L"
+                   data-start-index-id="startIndexTrade1L"
+                   data-end-index-id="endIndexTrade1L"
+                   data-total-items-id="totalItemsTrade1L"
+                   data-rows-per-page="10">
                 <thead>
                     <tr>
-                        <th>Symbol</th>
-                        <th>PNL</th>
-                        <th>Entry Type</th>
-                        <th>Entry Time</th>
-                        <th>Exit Type</th>
-                        <th>Exit Time</th>
-                        <th>Gap Type</th>
+                        <th class="sortable" data-sort="Symbol">Symbol <span class="sort-icon">↕</span></th>
+                        <th class="sortable" data-sort="PNL">PNL <span class="sort-icon">↕</span></th>
+                        <th class="sortable" data-sort="Entry Type">Entry Type</th>
+                        <th class="sortable" data-sort="Entry Time">Entry Time <span class="sort-icon">↕</span></th>
+                        <th class="sortable" data-sort="Exit Type">Exit Type</th>
+                        <th class="sortable" data-sort="Exit Time">Exit Time <span class="sort-icon">↕</span></th>
+                        <th class="sortable" data-sort="Gap Type">Gap Type</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -32,19 +38,26 @@
                             data-entry-time="{{ trade['Entry Time'] }}"
                             data-exit-time="{{ trade['Exit Time'] }}"
                             data-position="{{ trade.Position }}"
+                            data-value="{{ trade.Symbol }}"
                             style="cursor:pointer; text-decoration:underline; color:#007bff;">
                             {{ trade.Symbol }}
                         </td>
-                        <td class="{% if trade.PNL > 0 %}text-success{% elif trade.PNL < 0 %}text-danger{% endif %}">₹{{ trade.PNL|indian_currency }}</td>
-                        <td>{{ trade['Entry Type'] }}</td>
-                        <td>{{ trade['Entry Time'] }}</td>
-                        <td>{{ trade['Exit Type'] }}</td>
-                        <td>{{ trade['Exit Time'] }}</td>
-                        <td>{{ trade['Gap Type'] }}</td>
+                        <td class="{% if trade.PNL > 0 %}text-success{% elif trade.PNL < 0 %}text-danger{% endif %}" data-value="{{ trade.PNL }}">₹{{ trade.PNL|indian_currency }}</td>
+                        <td data-value="{{ trade['Entry Type'] }}">{{ trade['Entry Type'] }}</td>
+                        <td data-value="{{ trade['Entry Time'] }}">{{ trade['Entry Time'] }}</td>
+                        <td data-value="{{ trade['Exit Type'] }}">{{ trade['Exit Type'] }}</td>
+                        <td data-value="{{ trade['Exit Time'] }}">{{ trade['Exit Time'] }}</td>
+                        <td data-value="{{ trade['Gap Type'] }}">{{ trade['Gap Type'] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            <nav aria-label="Trade statistics pagination">
+                <ul class="pagination justify-content-center" id="paginationTrade1L"></ul>
+            </nav>
+            <div class="text-center mt-2">
+                <span class="text-muted">Showing <span id="startIndexTrade1L">1</span>-<span id="endIndexTrade1L">10</span> of <span id="totalItemsTrade1L">0</span> trades</span>
+            </div>
         </div>
     </div>
     <!-- Trade Chart Display -->
@@ -91,4 +104,8 @@
             });
         });
     </script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
 {% endblock %} 
