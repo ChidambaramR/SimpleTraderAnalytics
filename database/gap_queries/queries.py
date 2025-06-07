@@ -1,8 +1,7 @@
 import logging
 import pandas as pd
 from datetime import datetime
-from ..utils.db_utils import get_db_and_tables
-import numpy as np
+from ..utils.db_utils import get_db_and_tables, get_duckdb_minute_connection
 
 def analyze_daily_total_gaps(from_date, to_date):
     """
@@ -404,14 +403,10 @@ def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
     """
     try:
         day_conn, tables = get_db_and_tables('day')
-        minute_connections = get_db_and_tables('minute')
+        minute_connection = get_duckdb_minute_connection()
         
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
-        
-        # Calculate which minute we're analyzing
-        market_open = datetime.strptime('09:15', '%H:%M').time()
-        analysis_time_obj = datetime.strptime(analysis_time, '%H:%M').time()
         
         # Initialize counters and lists for statistics
         total_instances = 0
@@ -507,7 +502,7 @@ def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
                     continue
                     
                 # Get minute data for the current date
-                if table in minute_connections:
+                if is_table_present(minute_connection, table):
                     minute_query = f"""
                     SELECT time(ts) as time, open, high, low, close
                     FROM "{table}"
@@ -516,11 +511,7 @@ def analyze_first_minute_moves(from_date, to_date, analysis_time='09:15'):
                     ORDER BY ts
                     """
                     
-                    minute_data = pd.read_sql_query(
-                        minute_query,
-                        minute_connections[table],
-                        params=(curr_date, analysis_time)
-                    )
+                    minute_data = minute_connection.execute(minute_query, (curr_date, analysis_time)).fetch_df()
                     
                     if len(minute_data) > 0:
                         # Get the last candle data
@@ -665,7 +656,7 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute='
     """
     try:
         day_conn, tables = get_db_and_tables('day')
-        minute_connections = get_db_and_tables('minute')
+        minute_connection = get_duckdb_minute_connection()
         
         from_date = f"{from_date} 00:00:00"
         to_date = f"{to_date} 23:59:59"
@@ -705,7 +696,7 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute='
             
             df = pd.read_sql_query(query, day_conn, params=(from_date, to_date))
             
-            if len(df) > 0 and table in minute_connections:
+            if len(df) > 0 and is_table_present(minute_connection, table):
                 # Process daily data
                 df['date'] = pd.to_datetime(df['date'])
                 df.set_index('date', inplace=True)
@@ -725,8 +716,7 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute='
                 FROM "{table}"
                 WHERE datetime(ts) BETWEEN datetime(?) AND datetime(?)
                 """
-                minute_df = pd.read_sql_query(minute_query, minute_connections[table], 
-                                            params=(from_date, to_date))
+                minute_df = minute_connection.execute(minute_query, (from_date, to_date)).fetch_df()
                 
                 if len(minute_df) > 0:
                     minute_df['date'] = pd.to_datetime(minute_df['date'])
@@ -850,8 +840,7 @@ def analyze_first_minute_rest_of_day_moves(from_date, to_date, analysis_minute='
         
         # Close connections
         day_conn.close()
-        for conn in set(minute_connections.values()):
-            conn.close()
+        minute_connection.close()
             
         # Calculate average hit percentages for each increment
         gap_up_avg_increments = {
@@ -980,3 +969,10 @@ def analyze_price_increments(prev_close, gap_type, minute_df):
     except Exception as e:
         print(f"Error in analyze_price_increments: {str(e)}")
         return {'error': str(e)}
+
+def is_table_present(con, table_name):
+    result = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+        (table_name,)
+    ).fetchone()
+    return result[0] > 0

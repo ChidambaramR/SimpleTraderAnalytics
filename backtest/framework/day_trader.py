@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 import pandas as pd
-from datetime import datetime, timedelta
-from ..utils.fee_calculator import calculate_fees
-from database.utils.db_utils import get_db_and_tables
+from database.utils.db_utils import get_db_and_tables, get_duckdb_minute_connection
 
 
 class DayTrader(ABC):
@@ -120,30 +118,28 @@ class DayTrader(ABC):
         finally:
             day_conn.close()
 
-    def get_minute_data(self, stock, current_date):
+    def get_minute_data(self, stock, current_date, duckdb_min_conn):
         """
         Fetch minute data for a specific stock and date
         """
-        minute_connections = get_db_and_tables('minute')
-        
         try:
-            if stock in minute_connections:
-                minute_conn = minute_connections[stock]
-                query = f"""
-                SELECT ts, open, high, low, close, volume
-                FROM "{stock}"
-                WHERE date(ts) = ?
-                ORDER BY ts
-                """
-                df = pd.read_sql_query(query, minute_conn, params=(current_date.date(),))
-                df['ts'] = pd.to_datetime(df['ts'])
-                df.set_index('ts', inplace=True)
-                return df
-            return None
+            query = f"""
+            SELECT ts, open, high, low, close, volume
+            FROM "{stock}"
+            WHERE date(ts) = ?
+            ORDER BY ts
+            """
             
-        finally:
-            for conn in set(minute_connections.values()):
-                conn.close()
+            # Commenting the read query call which is recommended with sqlite3, but not recommended with DuckDB
+            # df = pd.read_sql_query(query, duckdb_min_conn, params=(current_date.date(),))
+            
+            df = duckdb_min_conn.execute(query, (current_date.date(),)).fetchdf()
+            df['ts'] = pd.to_datetime(df['ts'])
+            df.set_index('ts', inplace=True)
+            return df
+        except Exception as e:
+            print(f"Error fetching minute data for {stock} on {current_date}: {str(e)}")
+            return None
     
     def run_backtest(self, from_date, to_date, stock_list=None):
         try:
@@ -151,6 +147,8 @@ class DayTrader(ABC):
             trading_days, daily_data = self.load_data(from_date, to_date, stock_list)
             
             # Process each trading day
+            duckdb_min_conn = get_duckdb_minute_connection()
+            
             for i in range(1, len(trading_days)):
                 current_date = pd.Timestamp(trading_days.iloc[i]['trade_date'])
                 prev_date = pd.Timestamp(trading_days.iloc[i-1]['trade_date'])
@@ -174,7 +172,7 @@ class DayTrader(ABC):
                             (stock_data.index.date == current_date.date())
                             ]
 
-                        minute_slice = self.get_minute_data(stock, current_date)
+                        minute_slice = self.get_minute_data(stock, current_date, duckdb_min_conn)
 
                         day_trades = self.generate_trades(stock, day_slice, minute_slice, capital)
 
@@ -209,6 +207,9 @@ class DayTrader(ABC):
             return self.get_results()
         except Exception as e:
             raise Exception(f"Error in backtest: {str(e)}")
+        
+        finally:
+            duckdb_min_conn.close()
     
     def get_results(self):
         """Calculate and return final results"""
