@@ -6,12 +6,16 @@ __pycache__/
 # C extensions
 *.so
 
+keys.json
+
 *.xlsx
 *.db
 .DS_Store
 *.db*
 # Dont publish db files
 database/ohlc_data/*
+database/ohlc_data/merged_parquet.duckdb
+prod_stats.db
 prod_stats/data/*
 prod_stats/manifest.json
 keys.json

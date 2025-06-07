@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# All global configs / variables here
+REPO_ROOT=$(git rev-parse --show-toplevel)
+ZIP_NAME="repo_analytics.zip"
+BUCKET_NAME="simpletrader-working-bucket${S3_BUCKET_SUFFIX}"
+
+create_zip() {
+    # Collect exclusion patterns from .gitignore
+    echo "Creating zip file: $ZIP_NAME, excluding files in .gitignore"
+    if [[ -f .gitignore ]]; then
+        EXCLUDE_PATTERNS=$(sed '/^#/d;/^$/d' .gitignore | sed -e 's/^/--exclude /')
+    else
+        EXCLUDE_PATTERNS=""
+    fi
+
+    TEMP_DIR="$REPO_ROOT/SimpleTraderAnalyticsTemp"
+
+    cd "$REPO_ROOT"
+
+    # Copy files excluding those mentioned in .gitignore
+    rsync -av --quiet --exclude ".git/*" --exclude ".gitignore" $EXCLUDE_PATTERNS "$REPO_ROOT/" "$TEMP_DIR/"
+
+    echo "Completed copying files to temporary directory: $TEMP_DIR"
+
+    cd "$TEMP_DIR"
+    zip -rq "$ZIP_NAME" ./*
+    mv "$ZIP_NAME" "$REPO_ROOT/$ZIP_NAME"
+    cd ..
+    rm -rf "$TEMP_DIR"
+
+    echo "Zip file created: $REPO_ROOT/$ZIP_NAME"
+}
+
+push_repo_to_s3() {
+    pip freeze > "$REPO_ROOT/requirements.txt"
+
+    create_zip
+
+    echo "Uploading Zip: $REPO_ROOT/$ZIP_NAME"
+    aws s3 cp "$REPO_ROOT/$ZIP_NAME" "s3://$BUCKET_NAME/$ZIP_NAME"
+
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to upload repository to S3."
+        exit 1
+    fi
+
+    rm "$REPO_ROOT/$ZIP_NAME"
+}
+
+echo "Running pre-push hook..."
+
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$current_branch" = "main" ]; then
+    echo -e "\n\nPushing to S3 bucket"
+    push_repo_to_s3
+    echo "Pushing to S3 bucket passed"
+else
+    echo -e "\n\nNOT PUSHING TO S3. Because Branch is: $current_branch\n\n"
+fi
+
+echo "Proceeding with push to git"
+
+exit 0
