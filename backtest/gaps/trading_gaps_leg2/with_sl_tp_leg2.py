@@ -1,7 +1,6 @@
 from math import floor
 from ...framework.day_trader import DayTrader
 from ...utils.fee_calculator import calculate_fees
-from ...utils.runner import run_backtest_with_cache
 from datetime import datetime
 from math import floor
 from datetime import datetime

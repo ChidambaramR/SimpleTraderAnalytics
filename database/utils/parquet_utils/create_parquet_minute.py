@@ -1,5 +1,4 @@
 import os
-import re
 import sqlite3
 import pandas as pd
 import pyarrow as pa
