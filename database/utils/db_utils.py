@@ -3,6 +3,8 @@ import duckdb
 import os
 import pandas as pd
 
+EC2_MOUNT_LOC = '/mnt/data/analytics_db'
+
 def get_db_connection(interval):
     """
     Creates and returns a database connection for the given interval.
@@ -12,7 +14,12 @@ def get_db_connection(interval):
         if interval == 'day':
             db_name = 'day.db'
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            db_path = os.path.join(current_dir, '..', 'ohlc_data', db_name)
+
+            db_path = ""
+            if os.path.exists(EC2_MOUNT_LOC):
+                db_path = f'{EC2_MOUNT_LOC}/{db_name}'
+            else: 
+                db_path = os.path.join(current_dir, '..', 'ohlc_data', db_name)
             return sqlite3.connect(db_path)
     except Exception as e:
         raise Exception(f"Error connecting to database: {str(e)}")
@@ -53,7 +60,12 @@ def get_duckdb_minute_connection():
     Returns a DuckDB connection for minute data, which is generated from parquert files.
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(current_dir, '..', 'ohlc_data', 'merged_parquet.duckdb')
+
+    db_path = ""
+    if os.path.exists(EC2_MOUNT_LOC):
+        db_path = f'{EC2_MOUNT_LOC}/merged_parquet.duckdb'
+    else: 
+        db_path = os.path.join(current_dir, '..', 'ohlc_data', 'merged_parquet.duckdb')
     duckdb_conn = duckdb.connect(db_path)
     return duckdb_conn
 
