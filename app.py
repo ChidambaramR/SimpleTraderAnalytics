@@ -65,10 +65,6 @@ def format_indian_currency(amount):
 # Register the custom filter
 app.jinja_env.filters['indian_currency'] = format_indian_currency
 
-@app.before_first_request
-def primer():
-    app.logger.info("First request primer")
-
 @app.route('/')
 def home():
     return render_template('home.html')
