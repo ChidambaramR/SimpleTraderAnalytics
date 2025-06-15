@@ -15,16 +15,15 @@ from datetime import datetime
 from backtest.gaps.trading_gaps_daywise.without_sl_tp import run_backtest as run_backtest_daywise_without_sl_tp
 from backtest.gaps.trading_gaps_first_minute.with_sl_tp import run_backtest as run_backtest_first_minute_with_sl_tp
 from backtest.gaps.trading_gaps_leg2.with_sl_tp_leg2 import run_backtest as run_backtest_leg2
-from database.utils.db_utils import get_db_and_tables, get_minute_data_for_symbol
+from database.utils.db_utils import get_minute_data_for_symbol
 import os
 import pandas as pd
-import matplotlib.pyplot as plt
 import mplfinance as mpf
-import math
-import matplotlib.dates as mdates
 import numpy as np
+import logging
 
 app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
 
 # Global variable to store last trade_stats for grid view
 last_trade_stats = []
@@ -65,6 +64,10 @@ def format_indian_currency(amount):
 
 # Register the custom filter
 app.jinja_env.filters['indian_currency'] = format_indian_currency
+
+@app.before_first_request
+def primer():
+    app.logger.info("First request primer")
 
 @app.route('/')
 def home():
